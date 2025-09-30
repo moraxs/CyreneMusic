@@ -21,6 +21,13 @@ import { logger } from "./lib/logger";
 import axios from "axios";
 import { getConfig, compactLogString } from "./lib/utils";
 import { handleDouyinQuery } from "./lib/douyin";
+import {
+  sendRegisterCode,
+  register,
+  login,
+  sendResetCode,
+  resetPassword
+} from "./lib/authController";
 
 const host = "0.0.0.0";
 const port = 4055;
@@ -426,6 +433,49 @@ const app = new Elysia()
     return { status: 200, data: versionInfo };
   })
 
+  // ================= 用户认证 =================
+  // 发送注册验证码
+  .post("/auth/register/send-code", sendRegisterCode, {
+    body: t.Object({
+      email: t.String(),
+      username: t.String()
+    })
+  })
+
+  // 用户注册
+  .post("/auth/register", register, {
+    body: t.Object({
+      email: t.String(),
+      username: t.String(),
+      password: t.String(),
+      code: t.String()
+    })
+  })
+
+  // 用户登录
+  .post("/auth/login", login, {
+    body: t.Object({
+      account: t.String(),
+      password: t.String()
+    })
+  })
+
+  // 发送重置密码验证码
+  .post("/auth/reset-password/send-code", sendResetCode, {
+    body: t.Object({
+      email: t.String()
+    })
+  })
+
+  // 重置密码
+  .post("/auth/reset-password", resetPassword, {
+    body: t.Object({
+      email: t.String(),
+      code: t.String(),
+      newPassword: t.String()
+    })
+  })
+
   .listen(port, ({ hostname, port }) => {
     console.log(`Server running at http://${host}:${port}`);
     logger.info("  - POST /search (Netease)");
@@ -447,6 +497,13 @@ const app = new Elysia()
     logger.info("  - GET /douyin (Douyin)");
     logger.info("  - GET /version/latest (App Version)");
     logger.info("  - GET /mpd/:filename (MPD files)");
+    logger.info("");
+    logger.info("  === User Authentication ===");
+    logger.info("  - POST /auth/register/send-code (Send Register Code)");
+    logger.info("  - POST /auth/register (Register)");
+    logger.info("  - POST /auth/login (Login)");
+    logger.info("  - POST /auth/reset-password/send-code (Send Reset Code)");
+    logger.info("  - POST /auth/reset-password (Reset Password)");
   });
 
 // 启动时执行原有任务

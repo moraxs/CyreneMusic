@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../utils/theme_manager.dart';
 import '../widgets/custom_color_picker_dialog.dart';
+import '../services/url_service.dart';
 
 /// 设置页面
 class SettingsPage extends StatefulWidget {
@@ -13,22 +15,30 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   String _audioQuality = 'high';
   bool _autoPlay = true;
-  String _backendUrl = 'http://localhost:4055';
 
   @override
   void initState() {
     super.initState();
     // 监听主题变化
     ThemeManager().addListener(_onThemeChanged);
+    // 监听 URL 服务变化
+    UrlService().addListener(_onUrlServiceChanged);
   }
 
   @override
   void dispose() {
     ThemeManager().removeListener(_onThemeChanged);
+    UrlService().removeListener(_onUrlServiceChanged);
     super.dispose();
   }
 
   void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onUrlServiceChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -112,22 +122,17 @@ class _SettingsPageState extends State<SettingsPage> {
                 _buildSectionTitle('网络'),
                 _buildSettingCard([
                   _buildListTile(
-                    title: '后端服务器地址',
-                    subtitle: _backendUrl,
+                    title: '后端源',
+                    subtitle: UrlService().getSourceDescription(),
                     icon: Icons.dns,
-                    onTap: () => _showBackendUrlDialog(),
+                    onTap: () => _showBackendSourceDialog(),
                   ),
                   const Divider(height: 1),
                   _buildListTile(
                     title: '测试连接',
                     subtitle: '测试与后端服务器的连接',
                     icon: Icons.wifi_tethering,
-                    onTap: () {
-                      // TODO: 实现连接测试
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('连接测试功能开发中...')),
-                      );
-                    },
+                    onTap: () => _testConnection(),
                   ),
                 ]),
                 
@@ -434,21 +439,108 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  /// 显示后端地址对话框
-  void _showBackendUrlDialog() {
-    final controller = TextEditingController(text: _backendUrl);
+  /// 显示后端源选择对话框
+  void _showBackendSourceDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('选择后端源'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<BackendSourceType>(
+              title: const Text('官方源'),
+              subtitle: Text(
+                '默认后端服务',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              value: BackendSourceType.official,
+              groupValue: UrlService().sourceType,
+              onChanged: (value) {
+                UrlService().useOfficialSource();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('已切换到官方源')),
+                );
+              },
+            ),
+            RadioListTile<BackendSourceType>(
+              title: const Text('自定义源'),
+              subtitle: Text(
+                UrlService().customBaseUrl.isNotEmpty 
+                    ? UrlService().customBaseUrl 
+                    : '点击设置自定义地址',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              value: BackendSourceType.custom,
+              groupValue: UrlService().sourceType,
+              onChanged: (value) {
+                Navigator.pop(context);
+                _showCustomUrlDialog();
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示自定义 URL 输入对话框
+  void _showCustomUrlDialog() {
+    final controller = TextEditingController(text: UrlService().customBaseUrl);
     
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('后端服务器地址'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'URL',
-            hintText: 'http://localhost:4055',
-            border: OutlineInputBorder(),
-          ),
+        title: const Text('自定义后端源'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '请确保自定义源符合 OmniParse 标准',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: '后端地址',
+                hintText: 'http://example.com:4055',
+                prefixIcon: Icon(Icons.link),
+                border: OutlineInputBorder(),
+                helperText: '不要在末尾添加斜杠',
+              ),
+              keyboardType: TextInputType.url,
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -457,10 +549,26 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           FilledButton(
             onPressed: () {
-              setState(() => _backendUrl = controller.text);
+              final url = controller.text.trim();
+              
+              if (url.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('请输入后端地址')),
+                );
+                return;
+              }
+              
+              if (!UrlService.isValidUrl(url)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('URL 格式不正确')),
+                );
+                return;
+              }
+              
+              UrlService().useCustomSource(url);
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已保存服务器地址')),
+                SnackBar(content: Text('已切换到自定义源: $url')),
               );
             },
             child: const Text('保存'),
@@ -468,6 +576,138 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
+  }
+
+  /// 测试连接
+  Future<void> _testConnection() async {
+    // 显示加载对话框
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    final baseUrl = UrlService().baseUrl;
+    bool isSuccess = false;
+    String errorMessage = '';
+
+    try {
+      // 发送 GET 请求到根路径
+      final response = await http.get(
+        Uri.parse(baseUrl),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('连接超时');
+        },
+      );
+
+      // 检查响应码是否为 200 且响应体是 "OK"
+      if (response.statusCode == 200 && response.body.trim() == 'OK') {
+        isSuccess = true;
+      } else {
+        errorMessage = '响应码: ${response.statusCode}\n响应内容: ${response.body}';
+      }
+    } catch (e) {
+      errorMessage = e.toString();
+    }
+
+    // 关闭加载对话框
+    if (mounted) {
+      Navigator.pop(context);
+
+      // 显示结果对话框
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                isSuccess ? Icons.check_circle : Icons.error,
+                color: isSuccess
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(width: 8),
+              const Text('连接测试'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('后端地址: $baseUrl'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isSuccess
+                      ? Theme.of(context).colorScheme.primaryContainer
+                      : Theme.of(context).colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isSuccess ? Icons.done : Icons.close,
+                      color: isSuccess
+                          ? Theme.of(context).colorScheme.onPrimaryContainer
+                          : Theme.of(context).colorScheme.onErrorContainer,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isSuccess ? '连接成功' : '连接失败',
+                        style: TextStyle(
+                          color: isSuccess
+                              ? Theme.of(context).colorScheme.onPrimaryContainer
+                              : Theme.of(context).colorScheme.onErrorContainer,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!isSuccess) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '错误详情:',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        errorMessage,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   /// 显示关于对话框

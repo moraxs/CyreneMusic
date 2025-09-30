@@ -37,6 +37,9 @@ dependencies:
   
   # Windows custom title bar
   bitsdojo_window: ^0.1.6
+  
+  # HTTP requests
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:
