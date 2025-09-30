@@ -25,6 +25,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env.local
 .env.development.local
 .env.test.local
@@ -42,3 +43,9 @@ package-lock.json
 **/*.bun
 /cookie/*.txt
 /cookie/*.json
+
+# database
+/data/*.db
+/data/*.db-journal
+/data/*.db-shm
+/data/*.db-wal

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../widgets/custom_title_bar.dart';
 import '../pages/home_page.dart';
 import '../pages/settings_page.dart';
+import '../services/auth_service.dart';
+import '../pages/auth/login_page.dart';
 
 /// 主布局 - 包含侧边导航栏和内容区域
 class MainLayout extends StatefulWidget {
@@ -21,6 +23,115 @@ class _MainLayoutState extends State<MainLayout> {
     HomePage(),
     SettingsPage(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // 监听认证状态变化
+    AuthService().addListener(_onAuthChanged);
+  }
+
+  @override
+  void dispose() {
+    AuthService().removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _handleUserButtonTap() {
+    if (AuthService().isLoggedIn) {
+      // 已登录，显示用户菜单
+      _showUserMenu();
+    } else {
+      // 未登录，跳转到登录页面
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const LoginPage(),
+        ),
+      ).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  void _showUserMenu() {
+    final user = AuthService().currentUser;
+    if (user == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: CircleAvatar(
+                backgroundImage: user.avatarUrl != null
+                    ? NetworkImage(user.avatarUrl!)
+                    : null,
+                child: user.avatarUrl == null
+                    ? Text(user.username[0].toUpperCase())
+                    : null,
+              ),
+              title: Text(user.username),
+              subtitle: Text(user.email),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('个人信息'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('个人信息功能开发中...')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('退出登录'),
+              onTap: () {
+                Navigator.pop(context);
+                _confirmLogout();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmLogout() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('退出登录'),
+        content: const Text('确定要退出登录吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              AuthService().logout();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已退出登录')),
+              );
+            },
+            child: const Text('退出'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,13 +204,10 @@ class _MainLayoutState extends State<MainLayout> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // TODO: 打开用户页面
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('用户功能开发中...')),
-          );
-        },
-        child: const Icon(Icons.account_circle_outlined),
+        onPressed: _handleUserButtonTap,
+        child: AuthService().isLoggedIn
+            ? const Icon(Icons.account_circle)
+            : const Icon(Icons.account_circle_outlined),
       ),
     );
   }
@@ -156,14 +264,11 @@ class _MainLayoutState extends State<MainLayout> {
                 else
                   Container(),
                 IconButton(
-                  icon: const Icon(Icons.account_circle_outlined),
-                  tooltip: '用户',
-                  onPressed: () {
-                    // TODO: 打开用户页面
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('用户功能开发中...')),
-                    );
-                  },
+                  icon: AuthService().isLoggedIn
+                      ? const Icon(Icons.account_circle)
+                      : const Icon(Icons.account_circle_outlined),
+                  tooltip: AuthService().isLoggedIn ? '用户中心' : '登录',
+                  onPressed: _handleUserButtonTap,
                 ),
               ],
             ),

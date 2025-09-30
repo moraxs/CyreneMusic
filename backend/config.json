@@ -3,5 +3,17 @@
     "enabled": true,
     "url": "http://47.104.188.206:4056"
   },
-  "log_level": "DEV"
+  "log_level": "DEV",
+  "EMAIL": {
+    "host": "smtp.qiye.aliyun.com",
+    "port": 465,
+    "secure": true,
+    "auth": {
+      "user": "noreply@cialloo.site",
+      "pass": "Qwaszx1233"
+    },
+    "tls": {
+      "rejectUnauthorized": false
+    }
+  }
 } 
