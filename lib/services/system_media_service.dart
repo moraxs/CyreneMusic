@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'player_service.dart';
+import 'tray_service.dart';
 
 // 条件导入系统媒体控件
 import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
@@ -13,6 +14,11 @@ class SystemMediaService {
 
   SMTCWindows? _smtcWindows;
   bool _initialized = false;
+  bool _isDisposed = false; // 是否已释放
+  
+  // 缓存上次更新的信息，避免重复更新
+  int? _lastSongId;
+  PlayerState? _lastPlayerState;
 
   /// 初始化系统媒体控件
   Future<void> initialize() async {
@@ -119,7 +125,11 @@ class SystemMediaService {
 
   /// 监听播放器状态变化，同步到系统媒体控件
   void _onPlayerStateChanged() {
-    if (!_initialized) return;
+    // 如果已释放或未初始化，不再处理
+    if (!_initialized || _isDisposed) {
+      print('⚠️ [SystemMediaService] 已释放，跳过状态更新');
+      return;
+    }
 
     final player = PlayerService();
     final song = player.currentSong;
@@ -130,53 +140,65 @@ class SystemMediaService {
     } else if (Platform.isAndroid) {
       _updateAndroidMedia(player, song, track);
     }
+    
+    // 同时更新系统托盘菜单（updateMenu 内部已有智能检测，不会频繁更新）
+    if (!_isDisposed) {
+      TrayService().updateMenu();
+    }
+  }
+  
+  /// 获取当前歌曲的唯一 ID
+  int? _getCurrentSongId(dynamic song, dynamic track) {
+    if (song != null) {
+      return song.id?.hashCode ?? song.name.hashCode;
+    } else if (track != null) {
+      return track.id;
+    }
+    return null;
   }
 
-  /// 更新 Windows 媒体信息
+  /// 更新 Windows 媒体信息（智能更新，避免频繁刷新）
   void _updateWindowsMedia(PlayerService player, dynamic song, dynamic track) {
     try {
-      // 更新播放状态
-      final status = _getPlaybackStatus(player.state);
+      final currentSongId = _getCurrentSongId(song, track);
+      final currentState = player.state;
       
-      // 更新媒体信息
-      if (song != null || track != null) {
-        final title = song?.name ?? track?.name ?? '未知歌曲';
-        final artist = song?.arName ?? track?.artists ?? '未知艺术家';
-        final album = song?.alName ?? track?.album ?? '未知专辑';
-        var thumbnail = song?.pic ?? track?.picUrl ?? '';
-        
-        // 确保使用 HTTPS 协议
-        if (thumbnail.startsWith('http://')) {
-          thumbnail = thumbnail.replaceFirst('http://', 'https://');
-        }
-        
-        print('🖼️ [SystemMediaService] 更新媒体信息:');
-        print('   标题: $title');
-        print('   艺术家: $artist');
-        print('   专辑: $album');
-        print('   封面 URL: $thumbnail');
-        print('   封面 URL 长度: ${thumbnail.length}');
-        print('   封面 URL 是否为空: ${thumbnail.isEmpty}');
-        
-        // 先更新元数据，再更新状态
-        _smtcWindows!.updateMetadata(
-          MusicMetadata(
-            title: title,
-            artist: artist,
-            album: album,
-            albumArtist: artist,
-            thumbnail: thumbnail,
-          ),
-        );
-        
-        print('✅ [SystemMediaService] 元数据已更新到 SMTC');
+      // 1. 检查是否是新歌曲，只在歌曲切换时更新元数据
+      final isSongChanged = currentSongId != _lastSongId && currentSongId != null;
+      if (isSongChanged) {
+        print('🎵 [SystemMediaService] 歌曲切换，更新元数据...');
+        _updateMetadata(song, track);
+        _lastSongId = currentSongId;
       }
       
-      // 更新播放状态（在元数据之后）
-      _smtcWindows!.setPlaybackStatus(status);
-
-      // 更新时间轴信息
-      if (player.duration.inMilliseconds > 0) {
+      // 2. 检查播放状态是否改变，只在状态改变时更新
+      final isStateChanged = currentState != _lastPlayerState;
+      if (isStateChanged) {
+        final status = _getPlaybackStatus(currentState);
+        print('🎮 [SystemMediaService] 状态改变: ${currentState.name} -> ${status.name}');
+        _smtcWindows!.setPlaybackStatus(status);
+        _lastPlayerState = currentState;
+        
+        // 如果是停止状态，禁用 SMTC
+        if (status == PlaybackStatus.stopped) {
+          print('⏹️ [SystemMediaService] 停止播放，禁用 SMTC');
+          _smtcWindows!.disableSmtc();
+          _lastSongId = null; // 清除缓存，下次播放时重新更新元数据
+        } else if (_lastSongId == null && currentSongId != null) {
+          // 如果 SMTC 被禁用后重新播放，需要重新启用并更新元数据
+          print('▶️ [SystemMediaService] 重新启用 SMTC');
+          _smtcWindows!.enableSmtc();
+          _updateMetadata(song, track);
+          _lastSongId = currentSongId;
+        }
+      }
+      
+      // 3. 只在播放中且有有效时长时更新 timeline（进度信息）
+      // 注意：不要每次都更新，timeline 会自动推进
+      if (currentState == PlayerState.playing && 
+          player.duration.inMilliseconds > 0 &&
+          (isSongChanged || isStateChanged)) {
+        print('⏱️ [SystemMediaService] 更新播放进度');
         _smtcWindows!.updateTimeline(
           PlaybackTimeline(
             startTimeMs: 0,
@@ -189,8 +211,43 @@ class SystemMediaService {
       }
     } catch (e) {
       print('❌ [SystemMediaService] 更新 Windows 媒体信息失败: $e');
-      print('   错误堆栈: ${StackTrace.current}');
     }
+  }
+  
+  /// 更新元数据（标题、艺术家、封面等）
+  void _updateMetadata(dynamic song, dynamic track) {
+    if (song == null && track == null) {
+      print('⚠️ [SystemMediaService] 没有歌曲信息，跳过元数据更新');
+      return;
+    }
+    
+    final title = song?.name ?? track?.name ?? '未知歌曲';
+    final artist = song?.arName ?? track?.artists ?? '未知艺术家';
+    final album = song?.alName ?? track?.album ?? '未知专辑';
+    var thumbnail = song?.pic ?? track?.picUrl ?? '';
+    
+    // 确保使用 HTTPS 协议（SMTC 要求）
+    if (thumbnail.startsWith('http://')) {
+      thumbnail = thumbnail.replaceFirst('http://', 'https://');
+    }
+    
+    print('🖼️ [SystemMediaService] 更新元数据:');
+    print('   📝 标题: $title');
+    print('   👤 艺术家: $artist');
+    print('   💿 专辑: $album');
+    print('   🖼️ 封面: ${thumbnail.isNotEmpty ? "已设置" : "无"}');
+    
+    _smtcWindows!.updateMetadata(
+      MusicMetadata(
+        title: title,
+        artist: artist,
+        album: album,
+        albumArtist: artist,
+        thumbnail: thumbnail,
+      ),
+    );
+    
+    print('✅ [SystemMediaService] 元数据已更新到 SMTC');
   }
 
   /// 更新 Android 媒体信息
@@ -215,10 +272,37 @@ class SystemMediaService {
 
   /// 清理资源
   void dispose() {
-    PlayerService().removeListener(_onPlayerStateChanged);
-    _smtcWindows?.dispose();
+    if (_isDisposed) {
+      print('⚠️ [SystemMediaService] 已经清理过，跳过');
+      return;
+    }
+    
+    print('🎵 [SystemMediaService] 开始清理系统媒体控件...');
+    
+    // 立即设置标志，阻止继续更新（必须在最前面）
+    _isDisposed = true;
     _initialized = false;
-    print('🎵 [SystemMediaService] 系统媒体控件已清理');
+    
+    try {
+      // 移除播放器监听器（防止后续状态改变触发更新）
+      print('🔌 [SystemMediaService] 移除播放器监听器...');
+      PlayerService().removeListener(_onPlayerStateChanged);
+      
+      // 清除缓存状态
+      _lastSongId = null;
+      _lastPlayerState = null;
+      
+      // 释放 SMTC（不等待，让系统自动清理）
+      if (_smtcWindows != null) {
+        print('🗑️ [SystemMediaService] 释放 SMTC 资源...');
+        _smtcWindows?.dispose();
+        _smtcWindows = null;
+      }
+      
+      print('✅ [SystemMediaService] 系统媒体控件已清理');
+    } catch (e) {
+      print('⚠️ [SystemMediaService] 清理失败: $e');
+    }
   }
 }
 

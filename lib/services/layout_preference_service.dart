@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 布局模式
 enum LayoutMode {
@@ -13,10 +14,37 @@ enum LayoutMode {
 class LayoutPreferenceService extends ChangeNotifier {
   static final LayoutPreferenceService _instance = LayoutPreferenceService._internal();
   factory LayoutPreferenceService() => _instance;
-  LayoutPreferenceService._internal();
+  LayoutPreferenceService._internal() {
+    _loadSettings();
+  }
 
   /// 当前布局模式（仅适用于 Windows 平台）
   LayoutMode _layoutMode = LayoutMode.desktop;
+
+  /// 从本地存储加载布局设置
+  Future<void> _loadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final layoutModeIndex = prefs.getInt('layout_mode') ?? 0;
+      _layoutMode = LayoutMode.values[layoutModeIndex];
+      
+      print('🖥️ [LayoutPreference] 从本地加载布局: ${_layoutMode.name}');
+      notifyListeners();
+    } catch (e) {
+      print('❌ [LayoutPreference] 加载布局设置失败: $e');
+    }
+  }
+
+  /// 保存布局模式到本地
+  Future<void> _saveLayoutMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('layout_mode', _layoutMode.index);
+      print('💾 [LayoutPreference] 布局模式已保存: ${_layoutMode.name}');
+    } catch (e) {
+      print('❌ [LayoutPreference] 保存布局模式失败: $e');
+    }
+  }
 
   /// 获取当前布局模式
   LayoutMode get layoutMode => _layoutMode;
@@ -32,6 +60,9 @@ class LayoutPreferenceService extends ChangeNotifier {
     if (_layoutMode != mode) {
       _layoutMode = mode;
       print('🖥️ [LayoutPreference] 布局模式已切换: ${mode == LayoutMode.desktop ? "桌面模式" : "移动模式"}');
+      
+      // 保存到本地
+      _saveLayoutMode();
       
       // 先通知监听器更新 UI
       notifyListeners();

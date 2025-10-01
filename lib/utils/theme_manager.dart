@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 预设主题色方案
 class ThemeColorScheme {
@@ -33,7 +34,9 @@ class ThemeColors {
 class ThemeManager extends ChangeNotifier {
   static final ThemeManager _instance = ThemeManager._internal();
   factory ThemeManager() => _instance;
-  ThemeManager._internal();
+  ThemeManager._internal() {
+    _loadSettings();
+  }
 
   ThemeMode _themeMode = ThemeMode.light;
   Color _seedColor = Colors.deepPurple;
@@ -43,10 +46,53 @@ class ThemeManager extends ChangeNotifier {
 
   bool get isDarkMode => _themeMode == ThemeMode.dark;
 
+  /// 从本地存储加载主题设置
+  Future<void> _loadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // 加载主题模式
+      final themeModeIndex = prefs.getInt('theme_mode') ?? 0;
+      _themeMode = ThemeMode.values[themeModeIndex];
+      
+      // 加载主题色
+      final colorValue = prefs.getInt('seed_color') ?? Colors.deepPurple.value;
+      _seedColor = Color(colorValue);
+      
+      print('🎨 [ThemeManager] 从本地加载主题: ${_themeMode.name}, 主题色: 0x${_seedColor.value.toRadixString(16)}');
+      notifyListeners();
+    } catch (e) {
+      print('❌ [ThemeManager] 加载主题设置失败: $e');
+    }
+  }
+
+  /// 保存主题模式到本地
+  Future<void> _saveThemeMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('theme_mode', _themeMode.index);
+      print('💾 [ThemeManager] 主题模式已保存: ${_themeMode.name}');
+    } catch (e) {
+      print('❌ [ThemeManager] 保存主题模式失败: $e');
+    }
+  }
+
+  /// 保存主题色到本地
+  Future<void> _saveSeedColor() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('seed_color', _seedColor.value);
+      print('💾 [ThemeManager] 主题色已保存: 0x${_seedColor.value.toRadixString(16)}');
+    } catch (e) {
+      print('❌ [ThemeManager] 保存主题色失败: $e');
+    }
+  }
+
   /// 切换主题模式
   void setThemeMode(ThemeMode mode) {
     if (_themeMode != mode) {
       _themeMode = mode;
+      _saveThemeMode();
       notifyListeners();
     }
   }
@@ -65,6 +111,7 @@ class ThemeManager extends ChangeNotifier {
   void setSeedColor(Color color) {
     if (_seedColor != color) {
       _seedColor = color;
+      _saveSeedColor();
       notifyListeners();
     }
   }

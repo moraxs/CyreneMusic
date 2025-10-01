@@ -1,5 +1,7 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
 import '../services/player_service.dart';
 import '../models/lyric_line.dart';
 import '../utils/lyric_parser.dart';
@@ -109,15 +111,6 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.keyboard_arrow_down, size: 32),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
       body: AnimatedBuilder(
         animation: PlayerService(),
         builder: (context, child) {
@@ -154,6 +147,9 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
                   opacity: _fadeController,
                   child: Column(
                     children: [
+                      // 可拖动的顶部区域
+                      _buildDraggableTopBar(context),
+                      
                       const SizedBox(height: 20),
                       
                       // 封面
@@ -187,6 +183,56 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
         },
       ),
     );
+  }
+
+  /// 构建可拖动的顶部栏
+  Widget _buildDraggableTopBar(BuildContext context) {
+    // Windows 平台使用可拖动区域
+    if (Platform.isWindows) {
+      return SizedBox(
+        height: 56,
+        child: Stack(
+          children: [
+            // 可拖动区域（整个顶部）
+            Positioned.fill(
+              child: MoveWindow(
+                child: Container(
+                  color: Colors.transparent,
+                ),
+              ),
+            ),
+            // 返回按钮（覆盖在拖动区域之上，阻止拖动事件）
+            Positioned(
+              left: 8,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: IconButton(
+                  icon: const Icon(Icons.keyboard_arrow_down, size: 32),
+                  color: Colors.white,
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // 其他平台使用普通容器
+      return Container(
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.keyboard_arrow_down, size: 32),
+              color: Colors.white,
+              onPressed: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   /// 构建模糊背景

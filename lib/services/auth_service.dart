@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'url_service.dart';
 
@@ -48,13 +49,55 @@ class User {
 class AuthService extends ChangeNotifier {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
-  AuthService._internal();
+  AuthService._internal() {
+    _loadUserFromStorage();
+  }
 
   User? _currentUser;
   bool _isLoggedIn = false;
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
+
+  /// 从本地存储加载用户信息
+  Future<void> _loadUserFromStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userJson = prefs.getString('current_user');
+      
+      if (userJson != null && userJson.isNotEmpty) {
+        final userData = jsonDecode(userJson);
+        _currentUser = User.fromJson(userData);
+        _isLoggedIn = true;
+        print('👤 [AuthService] 从本地存储加载用户: ${_currentUser?.username}');
+        notifyListeners();
+      }
+    } catch (e) {
+      print('❌ [AuthService] 加载用户信息失败: $e');
+    }
+  }
+
+  /// 保存用户信息到本地存储
+  Future<void> _saveUserToStorage(User user) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('current_user', jsonEncode(user.toJson()));
+      print('💾 [AuthService] 用户信息已保存到本地');
+    } catch (e) {
+      print('❌ [AuthService] 保存用户信息失败: $e');
+    }
+  }
+
+  /// 清除本地存储的用户信息
+  Future<void> _clearUserFromStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('current_user');
+      print('🗑️ [AuthService] 已清除本地用户信息');
+    } catch (e) {
+      print('❌ [AuthService] 清除用户信息失败: $e');
+    }
+  }
 
   /// 发送注册验证码
   Future<Map<String, dynamic>> sendRegisterCode({
@@ -154,6 +197,10 @@ class AuthService extends ChangeNotifier {
       if (response.statusCode == 200) {
         _currentUser = User.fromJson(data['data']);
         _isLoggedIn = true;
+        
+        // 保存用户信息到本地
+        await _saveUserToStorage(_currentUser!);
+        
         notifyListeners();
         
         return {
@@ -248,9 +295,13 @@ class AuthService extends ChangeNotifier {
   }
 
   /// 登出
-  void logout() {
+  Future<void> logout() async {
     _currentUser = null;
     _isLoggedIn = false;
+    
+    // 清除本地存储
+    await _clearUserFromStorage();
+    
     notifyListeners();
   }
 }

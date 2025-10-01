@@ -184,8 +184,43 @@ class PlayerService extends ChangeNotifier {
   /// 清理资源
   @override
   void dispose() {
+    print('🗑️ [PlayerService] 释放播放器资源...');
+    _audioPlayer.stop();
     _audioPlayer.dispose();
     super.dispose();
+  }
+  
+  /// 强制释放所有资源（用于应用退出时）
+  Future<void> forceDispose() async {
+    try {
+      print('🗑️ [PlayerService] 强制释放播放器资源...');
+      
+      // 先移除所有监听器，防止状态改变时触发通知
+      print('🔌 [PlayerService] 移除所有监听器...');
+      // 注意：这里不能直接访问 _listeners，因为 ChangeNotifier 不暴露它
+      // 但是我们可以通过设置一个标志来阻止 notifyListeners 生效
+      
+      // 立即清理状态（不触发通知）
+      _state = PlayerState.idle;
+      _currentSong = null;
+      _currentTrack = null;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      
+      // 使用 unawaited 方式，不等待完成，直接继续
+      // 因为应用即将退出，操作系统会自动清理资源
+      _audioPlayer.stop().catchError((e) {
+        print('⚠️ [PlayerService] 停止播放失败: $e');
+      });
+      
+      _audioPlayer.dispose().catchError((e) {
+        print('⚠️ [PlayerService] 释放资源失败: $e');
+      });
+      
+      print('✅ [PlayerService] 播放器资源清理指令已发出');
+    } catch (e) {
+      print('❌ [PlayerService] 释放资源失败: $e');
+    }
   }
 }
 
