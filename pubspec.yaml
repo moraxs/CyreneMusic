@@ -40,6 +40,13 @@ dependencies:
   
   # HTTP requests
   http: ^1.2.0
+  
+  # Audio player
+  audioplayers: ^6.0.0
+  
+  # System media controls
+  smtc_windows: ^1.0.0
+  audio_service: ^0.18.12
 
 dev_dependencies:
   flutter_test:

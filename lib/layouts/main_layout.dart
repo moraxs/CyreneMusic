@@ -1,9 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../widgets/custom_title_bar.dart';
+import '../widgets/mini_player.dart';
 import '../pages/home_page.dart';
 import '../pages/settings_page.dart';
 import '../services/auth_service.dart';
+import '../services/layout_preference_service.dart';
+import '../utils/page_visibility_notifier.dart';
 import '../pages/auth/login_page.dart';
 
 /// 主布局 - 包含侧边导航栏和内容区域
@@ -29,15 +32,24 @@ class _MainLayoutState extends State<MainLayout> {
     super.initState();
     // 监听认证状态变化
     AuthService().addListener(_onAuthChanged);
+    // 监听布局偏好变化
+    LayoutPreferenceService().addListener(_onLayoutPreferenceChanged);
   }
 
   @override
   void dispose() {
     AuthService().removeListener(_onAuthChanged);
+    LayoutPreferenceService().removeListener(_onLayoutPreferenceChanged);
     super.dispose();
   }
 
   void _onAuthChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onLayoutPreferenceChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -137,8 +149,23 @@ class _MainLayoutState extends State<MainLayout> {
   Widget build(BuildContext context) {
     // 根据平台选择不同的布局
     if (Platform.isAndroid) {
+      // Android 始终使用移动布局
       return _buildMobileLayout(context);
+    } else if (Platform.isWindows) {
+      // Windows 根据用户偏好选择布局，使用 AnimatedBuilder 确保更新
+      return AnimatedBuilder(
+        animation: LayoutPreferenceService(),
+        builder: (context, child) {
+          final isDesktop = LayoutPreferenceService().isDesktopLayout;
+          print('🖥️ [MainLayout] 当前布局模式: ${isDesktop ? "桌面模式" : "移动模式"}');
+          
+          return isDesktop
+              ? _buildDesktopLayout(context)
+              : _buildMobileLayout(context);
+        },
+      );
     } else {
+      // 其他桌面平台默认使用桌面布局
       return _buildDesktopLayout(context);
     }
   }
@@ -151,7 +178,8 @@ class _MainLayoutState extends State<MainLayout> {
       body: Column(
         children: [
           // Windows 平台显示自定义标题栏
-          const CustomTitleBar(),
+          if (Platform.isWindows)
+            const CustomTitleBar(),
           
           // 主要内容区域
           Expanded(
@@ -174,6 +202,9 @@ class _MainLayoutState extends State<MainLayout> {
               ],
             ),
           ),
+          
+          // 迷你播放器
+          const MiniPlayer(),
         ],
       ),
     );
@@ -182,13 +213,29 @@ class _MainLayoutState extends State<MainLayout> {
   /// 构建移动端布局（Android/iOS）
   Widget _buildMobileLayout(BuildContext context) {
     return Scaffold(
-      body: _pages[_selectedIndex],
+      body: Column(
+        children: [
+          // Windows 平台且使用移动布局时也显示自定义标题栏
+          if (Platform.isWindows)
+            const CustomTitleBar(),
+          
+          // 主要内容区域
+          Expanded(
+            child: _pages[_selectedIndex],
+          ),
+          
+          // 迷你播放器
+          const MiniPlayer(),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (int index) {
           setState(() {
             _selectedIndex = index;
           });
+          // 通知页面切换
+          PageVisibilityNotifier().setCurrentPage(index);
         },
         destinations: const [
           NavigationDestination(
@@ -222,6 +269,8 @@ class _MainLayoutState extends State<MainLayout> {
         setState(() {
           _selectedIndex = index;
         });
+        // 通知页面切换
+        PageVisibilityNotifier().setCurrentPage(index);
       },
       labelType: _isRailExtended 
           ? NavigationRailLabelType.none 

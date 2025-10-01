@@ -3,15 +3,34 @@ import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'layouts/main_layout.dart';
 import 'utils/theme_manager.dart';
+import 'services/player_service.dart';
+import 'services/system_media_service.dart';
 
-void main() {
+// 条件导入 SMTC
+import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
+
+void main() async {
+  // 初始化播放器服务
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Windows 平台初始化 SMTC
+  if (Platform.isWindows) {
+    await SMTCWindows.initialize();
+  }
+  
+  PlayerService().initialize();
+  
+  // 初始化系统媒体控件
+  await SystemMediaService().initialize();
+  
   runApp(const MyApp());
   
   // Windows 平台初始化窗口设置
   if (Platform.isWindows) {
     doWhenWindowReady(() {
       const initialSize = Size(1200, 800);
-      const minSize = Size(800, 600);
+      // 设置更小的最小尺寸，以支持移动模式（400x850）
+      const minSize = Size(360, 640);
       
       appWindow.minSize = minSize;
       appWindow.size = initialSize;
