@@ -47,6 +47,25 @@ class TrayService with TrayListener, WindowListener {
       // 设置托盘提示文本
       await trayManager.setToolTip('Cyrene Music');
 
+      // 同步初始窗口可见性并确保启动时显示
+      try {
+        final isVisible = await windowManager.isVisible();
+        final isMinimized = await windowManager.isMinimized();
+        final isFocused = await windowManager.isFocused();
+        _isWindowVisible = isVisible && !isMinimized;
+
+        if (!_isWindowVisible) {
+          print('🪟 [TrayService] 启动时检测到窗口不可见，尝试显示...');
+          await windowManager.show();
+          if (!isFocused) {
+            await windowManager.focus();
+          }
+          _isWindowVisible = true;
+        }
+      } catch (e) {
+        print('⚠️ [TrayService] 检测/显示窗口失败: $e');
+      }
+
       // 设置右键菜单
       await _setContextMenu();
 

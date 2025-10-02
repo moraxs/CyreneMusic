@@ -413,39 +413,175 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
     );
   }
 
-  /// 构建榜单网格
+  /// 构建榜单列表（每个榜单横向滚动显示歌曲）
   Widget _buildToplistsGrid() {
     final toplists = MusicService().toplists;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '热门榜单',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+        // 遍历每个榜单
+        for (int i = 0; i < toplists.length; i++) ...[
+          _buildToplistSection(toplists[i]),
+          if (i < toplists.length - 1) const SizedBox(height: 32),
+        ],
+      ],
+    );
+  }
+
+  /// 构建单个榜单区域
+  Widget _buildToplistSection(Toplist toplist) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 榜单标题行
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              toplist.name,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            TextButton(
+              onPressed: () => _showToplistDetail(toplist),
+              child: const Text('查看全部'),
+            ),
+          ],
         ),
-        const SizedBox(height: 16),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 0.75,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
+        const SizedBox(height: 12),
+        // 横向滚动的歌曲卡片
+        SizedBox(
+          height: 220, // 增加高度以容纳所有内容
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: toplist.tracks.take(10).length, // 只显示前10首
+            itemBuilder: (context, index) {
+              final track = toplist.tracks[index];
+              return _buildTrackCard(track, index);
+            },
           ),
-          itemCount: toplists.length,
-          itemBuilder: (context, index) {
-            final toplist = toplists[index];
-            return ToplistCard(
-              toplist: toplist,
-              onTap: () => _showToplistDetail(toplist),
-            );
-          },
         ),
       ],
+    );
+  }
+
+  /// 构建歌曲卡片
+  Widget _buildTrackCard(Track track, int rank) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    return Container(
+      width: 140,
+      margin: const EdgeInsets.only(right: 12),
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            PlayerService().playTrack(track);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('正在加载：${track.name}'),
+                duration: const Duration(seconds: 1),
+              ),
+            );
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 专辑封面
+              Stack(
+                children: [
+                  Image.network(
+                    track.picUrl,
+                    width: 140,
+                    height: 140,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: 140,
+                        height: 140,
+                        color: colorScheme.surfaceContainerHighest,
+                        child: Icon(
+                          Icons.music_note,
+                          size: 48,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      );
+                    },
+                  ),
+                  // 排名标签
+                  Positioned(
+                    top: 4,
+                    left: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: rank < 3 
+                            ? colorScheme.primary 
+                            : colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${rank + 1}',
+                        style: TextStyle(
+                          color: rank < 3 
+                              ? colorScheme.onPrimary 
+                              : colorScheme.onSecondaryContainer,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 播放按钮覆盖层
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withOpacity(0),
+                      child: Center(
+                        child: Icon(
+                          Icons.play_circle_outline,
+                          size: 48,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // 歌曲信息
+              Container(
+                height: 56, // 固定高度避免溢出
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      track.name,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      track.artists,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

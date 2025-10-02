@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'url_service.dart';
+import 'developer_mode_service.dart';
 
 /// 用户信息模型
 class User {
@@ -105,30 +106,42 @@ class AuthService extends ChangeNotifier {
     required String username,
   }) async {
     try {
+      final url = '${UrlService().baseUrl}/auth/register/send-code';
+      final requestBody = {
+        'email': email,
+        'username': username,
+      };
+      
+      DeveloperModeService().addLog('🌐 [Network] POST $url');
+      DeveloperModeService().addLog('📤 [Network] 请求体: ${jsonEncode(requestBody)}');
+      
       final response = await http.post(
-        Uri.parse('${UrlService().baseUrl}/auth/register/send-code'),
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'username': username,
-        }),
+        body: jsonEncode(requestBody),
       );
 
+      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
+      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
+      
       final data = jsonDecode(response.body);
       
       if (response.statusCode == 200) {
+        DeveloperModeService().addLog('✅ [AuthService] 验证码发送成功');
         return {
           'success': true,
           'message': data['message'],
           'data': data['data'],
         };
       } else {
+        DeveloperModeService().addLog('❌ [AuthService] 验证码发送失败');
         return {
           'success': false,
           'message': data['message'] ?? '发送验证码失败',
         };
       }
     } catch (e) {
+      DeveloperModeService().addLog('❌ [AuthService] 网络错误: $e');
       return {
         'success': false,
         'message': '网络错误: ${e.toString()}',
@@ -144,8 +157,19 @@ class AuthService extends ChangeNotifier {
     required String code,
   }) async {
     try {
+      final url = '${UrlService().baseUrl}/auth/register';
+      final requestBody = {
+        'email': email,
+        'username': username,
+        'password': '***', // 密码不记录
+        'code': code,
+      };
+      
+      DeveloperModeService().addLog('🌐 [Network] POST $url');
+      DeveloperModeService().addLog('📤 [Network] 请求体: ${jsonEncode(requestBody)}');
+      
       final response = await http.post(
-        Uri.parse('${UrlService().baseUrl}/auth/register'),
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'email': email,
@@ -155,21 +179,27 @@ class AuthService extends ChangeNotifier {
         }),
       );
 
+      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
+      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
+      
       final data = jsonDecode(response.body);
       
       if (response.statusCode == 200) {
+        DeveloperModeService().addLog('✅ [AuthService] 用户注册成功: $username');
         return {
           'success': true,
           'message': data['message'],
           'data': data['data'],
         };
       } else {
+        DeveloperModeService().addLog('❌ [AuthService] 注册失败');
         return {
           'success': false,
           'message': data['message'] ?? '注册失败',
         };
       }
     } catch (e) {
+      DeveloperModeService().addLog('❌ [AuthService] 网络错误: $e');
       return {
         'success': false,
         'message': '网络错误: ${e.toString()}',
@@ -227,28 +257,38 @@ class AuthService extends ChangeNotifier {
     required String email,
   }) async {
     try {
+      final url = '${UrlService().baseUrl}/auth/reset-password/send-code';
+      final requestBody = {'email': email};
+      
+      DeveloperModeService().addLog('🌐 [Network] POST $url');
+      DeveloperModeService().addLog('📤 [Network] 请求体: ${jsonEncode(requestBody)}');
+      
       final response = await http.post(
-        Uri.parse('${UrlService().baseUrl}/auth/reset-password/send-code'),
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-        }),
+        body: jsonEncode(requestBody),
       );
 
+      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
+      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
+      
       final data = jsonDecode(response.body);
       
       if (response.statusCode == 200) {
+        DeveloperModeService().addLog('✅ [AuthService] 重置验证码发送成功');
         return {
           'success': true,
           'message': data['message'],
         };
       } else {
+        DeveloperModeService().addLog('❌ [AuthService] 验证码发送失败');
         return {
           'success': false,
           'message': data['message'] ?? '发送验证码失败',
         };
       }
     } catch (e) {
+      DeveloperModeService().addLog('❌ [AuthService] 网络错误: $e');
       return {
         'success': false,
         'message': '网络错误: ${e.toString()}',
@@ -263,8 +303,18 @@ class AuthService extends ChangeNotifier {
     required String newPassword,
   }) async {
     try {
+      final url = '${UrlService().baseUrl}/auth/reset-password';
+      final requestBody = {
+        'email': email,
+        'code': code,
+        'newPassword': '***', // 密码不记录
+      };
+      
+      DeveloperModeService().addLog('🌐 [Network] POST $url');
+      DeveloperModeService().addLog('📤 [Network] 请求体: ${jsonEncode(requestBody)}');
+      
       final response = await http.post(
-        Uri.parse('${UrlService().baseUrl}/auth/reset-password'),
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'email': email,
@@ -273,20 +323,26 @@ class AuthService extends ChangeNotifier {
         }),
       );
 
+      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
+      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
+      
       final data = jsonDecode(response.body);
       
       if (response.statusCode == 200) {
+        DeveloperModeService().addLog('✅ [AuthService] 密码重置成功');
         return {
           'success': true,
           'message': data['message'],
         };
       } else {
+        DeveloperModeService().addLog('❌ [AuthService] 密码重置失败');
         return {
           'success': false,
           'message': data['message'] ?? '重置密码失败',
         };
       }
     } catch (e) {
+      DeveloperModeService().addLog('❌ [AuthService] 网络错误: $e');
       return {
         'success': false,
         'message': '网络错误: ${e.toString()}',
@@ -296,11 +352,14 @@ class AuthService extends ChangeNotifier {
 
   /// 登出
   Future<void> logout() async {
+    final username = _currentUser?.username;
     _currentUser = null;
     _isLoggedIn = false;
     
     // 清除本地存储
     await _clearUserFromStorage();
+    
+    DeveloperModeService().addLog('👋 [AuthService] 用户退出登录: $username');
     
     notifyListeners();
   }

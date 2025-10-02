@@ -7,6 +7,7 @@ import 'utils/theme_manager.dart';
 import 'services/player_service.dart';
 import 'services/system_media_service.dart';
 import 'services/tray_service.dart';
+import 'services/developer_mode_service.dart';
 
 // 条件导入 SMTC
 import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
@@ -14,6 +15,10 @@ import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
 void main() async {
   // 初始化播放器服务
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 添加应用启动日志
+  DeveloperModeService().addLog('🚀 应用启动');
+  DeveloperModeService().addLog('📱 平台: ${Platform.operatingSystem}');
   
   // 初始化 window_manager（必须在 runApp 之前）
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
@@ -31,6 +36,8 @@ void main() async {
     
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.setTitle('Cyrene Music');
+      // 对于隐藏标题栏的窗口，确保以无边框模式运行，避免启动时不可见
+      await windowManager.setAsFrameless();
       await windowManager.show();
       await windowManager.focus();
       // 设置关闭窗口时不退出应用（会触发 onWindowClose 回调）
@@ -42,15 +49,19 @@ void main() async {
   // Windows 平台初始化 SMTC
   if (Platform.isWindows) {
     await SMTCWindows.initialize();
+    DeveloperModeService().addLog('🎮 SMTC 已初始化');
   }
   
   PlayerService().initialize();
+  DeveloperModeService().addLog('🎵 播放器服务已初始化');
   
   // 初始化系统媒体控件
   await SystemMediaService().initialize();
+  DeveloperModeService().addLog('🎛️ 系统媒体服务已初始化');
   
   // 初始化系统托盘
   await TrayService().initialize();
+  DeveloperModeService().addLog('📌 系统托盘已初始化');
   
   runApp(const MyApp());
   
@@ -64,6 +75,8 @@ void main() async {
       appWindow.size = initialSize;
       appWindow.alignment = Alignment.center;
       appWindow.title = 'Cyrene Music';
+      // 备用保障：确保窗口在就绪后可见（与 window_manager 协同）
+      appWindow.show();
     });
   }
 }

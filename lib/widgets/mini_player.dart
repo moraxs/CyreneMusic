@@ -24,9 +24,10 @@ class MiniPlayer extends StatelessWidget {
 
         return GestureDetector(
           onTap: () {
-            // 点击打开全屏播放器
+            // 点击打开全屏播放器（全屏对话框形式）
             Navigator.of(context).push(
               MaterialPageRoute(
+                fullscreenDialog: true,
                 builder: (context) => const PlayerPage(),
               ),
             );
