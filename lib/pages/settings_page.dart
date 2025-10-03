@@ -2,13 +2,19 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../utils/theme_manager.dart';
 import '../widgets/custom_color_picker_dialog.dart';
+import '../models/song_detail.dart';
+import '../models/version_info.dart';
 import '../services/url_service.dart';
 import '../services/auth_service.dart';
 import '../services/location_service.dart';
 import '../services/layout_preference_service.dart';
 import '../services/cache_service.dart';
+import '../services/download_service.dart';
+import '../services/audio_quality_service.dart';
+import '../services/version_service.dart';
 import '../pages/auth/login_page.dart';
 
 /// 设置页面
@@ -20,9 +26,6 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  String _audioQuality = 'high';
-  bool _autoPlay = true;
-
   @override
   void initState() {
     super.initState();
@@ -40,6 +43,10 @@ class _SettingsPageState extends State<SettingsPage> {
     LayoutPreferenceService().addListener(_onLayoutPreferenceChanged);
     // 监听缓存服务变化
     CacheService().addListener(_onCacheChanged);
+    // 监听下载服务变化
+    DownloadService().addListener(_onDownloadChanged);
+    // 监听音质服务变化
+    AudioQualityService().addListener(_onAudioQualityChanged);
     
     // 如果已登录，获取 IP 归属地
     final isLoggedIn = AuthService().isLoggedIn;
@@ -61,6 +68,8 @@ class _SettingsPageState extends State<SettingsPage> {
     LocationService().removeListener(_onLocationChanged);
     LayoutPreferenceService().removeListener(_onLayoutPreferenceChanged);
     CacheService().removeListener(_onCacheChanged);
+    DownloadService().removeListener(_onDownloadChanged);
+    AudioQualityService().removeListener(_onAudioQualityChanged);
     super.dispose();
   }
 
@@ -104,6 +113,18 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _onCacheChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onDownloadChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onAudioQualityChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -179,19 +200,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 _buildSettingCard([
                   _buildListTile(
                     title: '音质选择',
-                    subtitle: _getAudioQualityText(_audioQuality),
+                    subtitle: '${AudioQualityService().getQualityName()} - ${AudioQualityService().getQualityDescription()}',
                     icon: Icons.high_quality,
                     onTap: () => _showAudioQualityDialog(),
-                  ),
-                  const Divider(height: 1),
-                  _buildSwitchTile(
-                    title: '自动播放',
-                    subtitle: '启动时自动播放上次内容',
-                    icon: Icons.play_circle_outline,
-                    value: _autoPlay,
-                    onChanged: (value) {
-                      setState(() => _autoPlay = value);
-                    },
                   ),
                 ]),
                 
@@ -249,6 +260,16 @@ class _SettingsPageState extends State<SettingsPage> {
                     icon: Icons.storage,
                     onTap: () => _showCacheManagement(),
                   ),
+                  // Windows 平台显示下载目录设置
+                  if (Platform.isWindows) ...[
+                    const Divider(height: 1),
+                    _buildListTile(
+                      title: '下载目录',
+                      subtitle: _getDownloadDirSubtitle(),
+                      icon: Icons.download,
+                      onTap: () => _showDownloadDirSettings(),
+                    ),
+                  ],
                 ]),
                 
                 const SizedBox(height: 24),
@@ -258,7 +279,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 _buildSettingCard([
                   _buildListTile(
                     title: '版本信息',
-                    subtitle: 'v1.0.0',
+                    subtitle: 'v${VersionService().currentVersion}',
                     icon: Icons.info_outline,
                     onTap: () => _showAboutDialog(),
                   ),
@@ -267,12 +288,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     title: '检查更新',
                     subtitle: '查看是否有新版本',
                     icon: Icons.system_update,
-                    onTap: () {
-                      // TODO: 实现更新检查
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('检查更新功能开发中...')),
-                      );
-                    },
+                    onTap: _checkForUpdate,
                   ),
                 ]),
                 
@@ -345,22 +361,6 @@ class _SettingsPageState extends State<SettingsPage> {
   String _getCurrentThemeColorName() {
     final currentIndex = ThemeManager().getCurrentColorIndex();
     return ThemeColors.presets[currentIndex].name;
-  }
-
-  /// 获取音质文本
-  String _getAudioQualityText(String quality) {
-    switch (quality) {
-      case 'low':
-        return '标准音质';
-      case 'medium':
-        return '较高音质';
-      case 'high':
-        return '高音质';
-      case 'lossless':
-        return '无损音质';
-      default:
-        return '高音质';
-    }
   }
 
   /// 显示主题色选择器
@@ -599,6 +599,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// 显示音质选择对话框
   void _showAudioQualityDialog() {
+    final currentQuality = AudioQualityService().currentQuality;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -606,44 +608,68 @@ class _SettingsPageState extends State<SettingsPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            RadioListTile<String>(
+            RadioListTile<AudioQuality>(
               title: const Text('标准音质'),
-              value: 'low',
-              groupValue: _audioQuality,
+              subtitle: const Text('128kbps，节省流量'),
+              value: AudioQuality.standard,
+              groupValue: currentQuality,
               onChanged: (value) {
-                setState(() => _audioQuality = value!);
-                Navigator.pop(context);
+                if (value != null) {
+                  AudioQualityService().setQuality(value);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('音质设置已更新'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
               },
             ),
-            RadioListTile<String>(
-              title: const Text('较高音质'),
-              value: 'medium',
-              groupValue: _audioQuality,
+            RadioListTile<AudioQuality>(
+              title: const Text('极高音质'),
+              subtitle: const Text('320kbps，推荐'),
+              value: AudioQuality.exhigh,
+              groupValue: currentQuality,
               onChanged: (value) {
-                setState(() => _audioQuality = value!);
-                Navigator.pop(context);
+                if (value != null) {
+                  AudioQualityService().setQuality(value);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('音质设置已更新'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
               },
             ),
-            RadioListTile<String>(
-              title: const Text('高音质'),
-              value: 'high',
-              groupValue: _audioQuality,
-              onChanged: (value) {
-                setState(() => _audioQuality = value!);
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<String>(
+            RadioListTile<AudioQuality>(
               title: const Text('无损音质'),
-              value: 'lossless',
-              groupValue: _audioQuality,
+              subtitle: const Text('FLAC，音质最佳'),
+              value: AudioQuality.lossless,
+              groupValue: currentQuality,
               onChanged: (value) {
-                setState(() => _audioQuality = value!);
-                Navigator.pop(context);
+                if (value != null) {
+                  AudioQualityService().setQuality(value);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('音质设置已更新'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
               },
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
       ),
     );
   }
@@ -924,13 +950,266 @@ class _SettingsPageState extends State<SettingsPage> {
     showAboutDialog(
       context: context,
       applicationName: 'Cyrene Music',
-      applicationVersion: '1.0.0',
+      applicationVersion: VersionService().currentVersion,
       applicationIcon: const Icon(Icons.music_note, size: 48),
       children: [
         const Text('一个跨平台的音乐与视频聚合播放器'),
         const SizedBox(height: 16),
         const Text('支持网易云音乐、QQ音乐、酷狗音乐、Bilibili等平台'),
       ],
+    );
+  }
+
+  /// 检查更新
+  Future<void> _checkForUpdate() async {
+    // 显示加载对话框
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      print('🔍 [SettingsPage] 开始检查更新...');
+      
+      final versionInfo = await VersionService().checkForUpdate(silent: false);
+      
+      if (!mounted) return;
+      
+      // 关闭加载对话框
+      Navigator.pop(context);
+      
+      if (versionInfo != null && VersionService().hasUpdate) {
+        print('✅ [SettingsPage] 发现新版本: ${versionInfo.version}');
+        _showUpdateDialog(versionInfo);
+      } else {
+        print('✅ [SettingsPage] 已是最新版本');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('已是最新版本'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ [SettingsPage] 检查更新失败: $e');
+      
+      if (!mounted) return;
+      
+      // 关闭加载对话框
+      Navigator.pop(context);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text('检查更新失败: $e')),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  /// 显示更新提示对话框
+  void _showUpdateDialog(VersionInfo versionInfo) {
+    if (!mounted) return;
+
+    final isForceUpdate = versionInfo.forceUpdate;
+
+    showDialog(
+      context: context,
+      barrierDismissible: !isForceUpdate,
+      builder: (context) => PopScope(
+        canPop: !isForceUpdate,
+        child: AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.system_update, size: 28),
+              SizedBox(width: 12),
+              Text('发现新版本'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 版本信息
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '最新版本',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                versionInfo.version,
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '当前版本',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                VersionService().currentVersion,
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // 更新内容
+                Text(
+                  '更新内容',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    versionInfo.changelog,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+
+                // 强制更新提示
+                if (isForceUpdate) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.warning,
+                          color: Theme.of(context).colorScheme.error,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '此版本为强制更新\n请立即更新',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onErrorContainer,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            // 稍后提醒按钮（仅非强制更新时显示）
+            if (!isForceUpdate)
+              TextButton(
+                onPressed: () async {
+                  await VersionService().ignoreCurrentVersion(versionInfo.version);
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('已忽略版本 ${versionInfo.version}，有新版本时将再次提醒'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('稍后提醒'),
+              ),
+
+            // 立即更新按钮
+            FilledButton.icon(
+              onPressed: () async {
+                final url = versionInfo.downloadUrl;
+                print('🔗 [SettingsPage] 打开下载链接: $url');
+
+                try {
+                  final uri = Uri.parse(url);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    print('✅ [SettingsPage] 已打开浏览器');
+                  } else {
+                    throw Exception('无法打开链接');
+                  }
+                } catch (e) {
+                  print('❌ [SettingsPage] 打开链接失败: $e');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('打开链接失败: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              icon: const Icon(Icons.download),
+              label: const Text('立即更新'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1260,6 +1539,15 @@ class _SettingsPageState extends State<SettingsPage> {
       return '自定义：$customDir';
     }
     return '默认位置';
+  }
+
+  /// 获取下载目录副标题
+  String _getDownloadDirSubtitle() {
+    final downloadPath = DownloadService().downloadPath;
+    if (downloadPath != null && downloadPath.isNotEmpty) {
+      return downloadPath;
+    }
+    return '未设置';
   }
 
   /// 显示缓存管理
@@ -1695,6 +1983,132 @@ class _SettingsPageState extends State<SettingsPage> {
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
             child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示下载目录设置
+  Future<void> _showDownloadDirSettings() async {
+    final currentDownloadPath = DownloadService().downloadPath;
+    final dirController = TextEditingController(text: currentDownloadPath ?? '');
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('下载目录设置'),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '当前下载目录：',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                currentDownloadPath ?? '未设置',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: dirController,
+                decoration: const InputDecoration(
+                  labelText: '新下载目录',
+                  border: OutlineInputBorder(),
+                  hintText: '例如: D:\\Music\\Cyrene',
+                ),
+                readOnly: true,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final result = await FilePicker.platform.getDirectoryPath(
+                          dialogTitle: '选择下载目录',
+                        );
+
+                        if (result != null) {
+                          dirController.text = result;
+                        }
+                      },
+                      icon: const Icon(Icons.folder_open),
+                      label: const Text('浏览'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.onSecondaryContainer,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '下载的音乐文件将保存到指定目录',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSecondaryContainer,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final newDir = dirController.text.trim();
+
+              if (newDir.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('请选择下载目录')),
+                );
+                return;
+              }
+
+              // 设置新的下载目录
+              final success = await DownloadService().setDownloadPath(newDir);
+
+              if (mounted) {
+                Navigator.pop(context);
+                if (success) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('下载目录已更新')),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('设置下载目录失败')),
+                  );
+                }
+              }
+            },
+            child: const Text('保存'),
           ),
         ],
       ),

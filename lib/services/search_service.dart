@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/track.dart';
 import '../models/merged_track.dart';
 import 'url_service.dart';
@@ -68,13 +69,22 @@ class SearchResult {
 class SearchService extends ChangeNotifier {
   static final SearchService _instance = SearchService._internal();
   factory SearchService() => _instance;
-  SearchService._internal();
+  SearchService._internal() {
+    _loadSearchHistory();
+  }
 
   SearchResult _searchResult = SearchResult();
   SearchResult get searchResult => _searchResult;
 
   String _currentKeyword = '';
   String get currentKeyword => _currentKeyword;
+
+  // 搜索历史记录
+  List<String> _searchHistory = [];
+  List<String> get searchHistory => _searchHistory;
+  
+  static const String _historyKey = 'search_history';
+  static const int _maxHistoryCount = 20; // 最多保存20条历史记录
 
   /// 搜索歌曲（三个平台并行）
   Future<void> search(String keyword) async {
@@ -83,6 +93,9 @@ class SearchService extends ChangeNotifier {
     }
 
     _currentKeyword = keyword;
+    
+    // 保存到搜索历史
+    await _addToSearchHistory(keyword);
     
     // 重置搜索结果，设置加载状态
     _searchResult = SearchResult(
@@ -326,6 +339,77 @@ class SearchService extends ChangeNotifier {
     _searchResult = SearchResult();
     _currentKeyword = '';
     notifyListeners();
+  }
+
+  /// 加载搜索历史
+  Future<void> _loadSearchHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final history = prefs.getStringList(_historyKey) ?? [];
+      _searchHistory = history;
+      print('📚 [SearchService] 加载搜索历史: ${_searchHistory.length} 条');
+    } catch (e) {
+      print('❌ [SearchService] 加载搜索历史失败: $e');
+      _searchHistory = [];
+    }
+  }
+
+  /// 添加到搜索历史
+  Future<void> _addToSearchHistory(String keyword) async {
+    try {
+      final trimmedKeyword = keyword.trim();
+      if (trimmedKeyword.isEmpty) return;
+
+      // 如果已存在，先移除（避免重复）
+      _searchHistory.remove(trimmedKeyword);
+      
+      // 添加到列表开头
+      _searchHistory.insert(0, trimmedKeyword);
+      
+      // 限制历史记录数量
+      if (_searchHistory.length > _maxHistoryCount) {
+        _searchHistory = _searchHistory.sublist(0, _maxHistoryCount);
+      }
+      
+      // 保存到本地
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_historyKey, _searchHistory);
+      
+      print('💾 [SearchService] 保存搜索历史: $trimmedKeyword');
+      notifyListeners();
+    } catch (e) {
+      print('❌ [SearchService] 保存搜索历史失败: $e');
+    }
+  }
+
+  /// 删除单条搜索历史
+  Future<void> removeSearchHistory(String keyword) async {
+    try {
+      _searchHistory.remove(keyword);
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_historyKey, _searchHistory);
+      
+      print('🗑️ [SearchService] 删除搜索历史: $keyword');
+      notifyListeners();
+    } catch (e) {
+      print('❌ [SearchService] 删除搜索历史失败: $e');
+    }
+  }
+
+  /// 清空所有搜索历史
+  Future<void> clearSearchHistory() async {
+    try {
+      _searchHistory.clear();
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_historyKey);
+      
+      print('🗑️ [SearchService] 清空所有搜索历史');
+      notifyListeners();
+    } catch (e) {
+      print('❌ [SearchService] 清空搜索历史失败: $e');
+    }
   }
 }
 

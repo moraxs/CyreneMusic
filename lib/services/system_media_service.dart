@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'package:audio_service/audio_service.dart';
 import 'player_service.dart';
 import 'tray_service.dart';
+import 'audio_handler_service.dart';
 
 // 条件导入系统媒体控件
 import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
@@ -13,6 +15,7 @@ class SystemMediaService {
   SystemMediaService._internal();
 
   SMTCWindows? _smtcWindows;
+  CyreneAudioHandler? _audioHandler;  // Android 媒体处理器
   bool _initialized = false;
   bool _isDisposed = false; // 是否已释放
   
@@ -61,11 +64,11 @@ class SystemMediaService {
         ),
         config: const SMTCConfig(
           fastForwardEnabled: false,
-          nextEnabled: false,
+          nextEnabled: true,        // 启用下一首
           pauseEnabled: true,
           playEnabled: true,
           rewindEnabled: false,
-          prevEnabled: false,
+          prevEnabled: true,         // 启用上一首
           stopEnabled: true,
         ),
       );
@@ -94,10 +97,40 @@ class SystemMediaService {
 
   /// 初始化 Android 媒体控件
   Future<void> _initializeAndroid() async {
-    // TODO: 集成 audio_service
-    // Android 平台需要更复杂的设置，包括创建后台服务
-    // 这里暂时预留接口
-    print('🔧 [SystemMediaService] Android audio_service 待实现');
+    try {
+      print('📱 [SystemMediaService] 开始初始化 Android audio_service...');
+      
+      // 初始化 audio_service 并创建 AudioHandler
+      // 根据文档：androidStopForegroundOnPause = false 时，androidNotificationOngoing 必须也为 false
+      // 这样可以避免 Android 12+ 的 ForegroundServiceStartNotAllowedException
+      _audioHandler = await AudioService.init(
+        builder: () => CyreneAudioHandler(),
+        config: const AudioServiceConfig(
+          androidNotificationChannelId: 'com.cyrene.music.channel.audio',
+          androidNotificationChannelName: 'Cyrene Music',
+          androidNotificationOngoing: false,  // 必须为 false（配合 androidStopForegroundOnPause = false）
+          // 不设置 androidNotificationIcon，使用 audio_service 的默认图标（避免黑色方块）
+          // 如果需要自定义图标，需要在 drawable 目录创建单色透明背景的图标
+          androidShowNotificationBadge: true,
+          androidStopForegroundOnPause: false,  // 保持服务在前台，避免 Android 12+ 重启问题
+        ),
+      ) as CyreneAudioHandler;
+      
+      if (_audioHandler != null) {
+        print('✅ [SystemMediaService] Android audio_service 初始化成功');
+        print('   AudioHandler 类型: ${_audioHandler.runtimeType}');
+        print('   通知渠道 ID: com.cyrene.music.channel.audio');
+        print('   ⚠️ 如果通知未显示，请检查：');
+        print('      1. 是否授予了通知权限（Android 13+）');
+        print('      2. 是否播放了歌曲触发状态更新');
+        print('      3. 查看 AudioHandler 日志确认状态是否更新');
+      } else {
+        print('❌ [SystemMediaService] AudioHandler 为 null');
+      }
+    } catch (e, stackTrace) {
+      print('❌ [SystemMediaService] Android audio_service 初始化失败: $e');
+      print('   堆栈跟踪: $stackTrace');
+    }
   }
 
   /// 处理媒体按钮事件
@@ -119,11 +152,11 @@ class SystemMediaService {
         break;
       case PressedButton.next:
         print('⏭️ [SystemMediaService] 系统媒体控件: 下一曲');
-        // TODO: 实现下一曲
+        player.playNext();
         break;
       case PressedButton.previous:
         print('⏮️ [SystemMediaService] 系统媒体控件: 上一曲');
-        // TODO: 实现上一曲
+        player.playPrevious();
         break;
       default:
         break;
@@ -144,9 +177,8 @@ class SystemMediaService {
 
     if (Platform.isWindows && _smtcWindows != null) {
       _updateWindowsMedia(player, song, track);
-    } else if (Platform.isAndroid) {
-      _updateAndroidMedia(player, song, track);
     }
+    // Android 平台的媒体通知由 AudioHandler 自动处理，无需在此手动更新
     
     // 同时更新系统托盘菜单（updateMenu 内部已有智能检测，不会频繁更新）
     if (!_isDisposed) {
@@ -171,6 +203,24 @@ class SystemMediaService {
     try {
       final currentSongId = _getCurrentSongId(song, track);
       final currentState = player.state;
+      
+      // 检查 SMTC 是否需要重新启用（在歌曲切换或状态改变时）
+      final shouldEnableSmtc = _lastSongId == null && 
+                               currentSongId != null && 
+                               currentState != PlayerState.idle &&
+                               currentState != PlayerState.error;
+      
+      if (shouldEnableSmtc) {
+        print('▶️ [SystemMediaService] 重新启用 SMTC');
+        try {
+          _smtcWindows!.enableSmtc();
+        } catch (e) {
+          // 忽略 SharedMemory 错误
+          if (!e.toString().contains('SharedMemory')) {
+            print('⚠️ [SystemMediaService] 启用 SMTC 失败: $e');
+          }
+        }
+      }
       
       // 1. 检查是否是新歌曲，只在歌曲切换时更新元数据
       final isSongChanged = currentSongId != _lastSongId && currentSongId != null;
@@ -197,17 +247,18 @@ class SystemMediaService {
         
         _lastPlayerState = currentState;
         
-        // 如果是停止状态，禁用 SMTC
-        if (status == PlaybackStatus.stopped) {
+        // 如果是停止或空闲状态，禁用 SMTC
+        if (status == PlaybackStatus.stopped && currentState == PlayerState.idle) {
           print('⏹️ [SystemMediaService] 停止播放，禁用 SMTC');
-          _smtcWindows!.disableSmtc();
+          try {
+            _smtcWindows!.disableSmtc();
+          } catch (e) {
+            // 忽略错误
+            if (!e.toString().contains('SharedMemory')) {
+              print('⚠️ [SystemMediaService] 禁用 SMTC 失败: $e');
+            }
+          }
           _lastSongId = null; // 清除缓存，下次播放时重新更新元数据
-        } else if (_lastSongId == null && currentSongId != null) {
-          // 如果 SMTC 被禁用后重新播放，需要重新启用并更新元数据
-          print('▶️ [SystemMediaService] 重新启用 SMTC');
-          _smtcWindows!.enableSmtc();
-          _updateMetadata(song, track);
-          _lastSongId = currentSongId;
         }
       }
       
@@ -276,12 +327,6 @@ class SystemMediaService {
     print('✅ [SystemMediaService] 元数据已更新到 SMTC');
   }
 
-  /// 更新 Android 媒体信息
-  void _updateAndroidMedia(PlayerService player, dynamic song, dynamic track) {
-    // TODO: 实现 Android audio_service 更新
-    // 需要使用 audio_service 包的 API
-  }
-
   /// 将播放状态转换为 SMTC 播放状态
   PlaybackStatus _getPlaybackStatus(PlayerState state) {
     switch (state) {
@@ -323,6 +368,12 @@ class SystemMediaService {
         print('🗑️ [SystemMediaService] 释放 SMTC 资源...');
         _smtcWindows?.dispose();
         _smtcWindows = null;
+      }
+      
+      // 释放 Android AudioHandler
+      if (_audioHandler != null) {
+        print('🗑️ [SystemMediaService] 释放 AudioHandler 资源...');
+        _audioHandler = null;
       }
       
       print('✅ [SystemMediaService] 系统媒体控件已清理');

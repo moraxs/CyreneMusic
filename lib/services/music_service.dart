@@ -6,6 +6,7 @@ import '../models/track.dart';
 import '../models/song_detail.dart';
 import 'url_service.dart';
 import 'developer_mode_service.dart';
+import 'audio_quality_service.dart';
 
 /// 音乐服务 - 处理与音乐相关的API请求
 class MusicService extends ChangeNotifier {
@@ -192,6 +193,7 @@ class MusicService extends ChangeNotifier {
   }) async {
     try {
       print('🎵 [MusicService] 获取歌曲详情: $songId (${source.name}), 音质: ${quality.displayName}');
+      print('   Song ID 类型: ${songId.runtimeType}');
       DeveloperModeService().addLog('🎵 [MusicService] 获取歌曲详情: $songId (${source.name})');
 
       final baseUrl = UrlService().baseUrl;
@@ -277,6 +279,34 @@ class MusicService extends ChangeNotifier {
         
         final data = json.decode(responseBody) as Map<String, dynamic>;
 
+        // 🔍 调试：打印后端返回的完整数据（包括歌词信息）
+        print('🔍 [MusicService] 后端返回的数据:');
+        print('   status: ${data['status']}');
+        print('   name: ${data['name']}');
+        print('   url: ${data['url']}');
+        print('   lyric 字段存在: ${data.containsKey('lyric')}');
+        print('   tlyric 字段存在: ${data.containsKey('tlyric')}');
+        if (data.containsKey('lyric')) {
+          final lyricContent = data['lyric'] as String?;
+          print('   ✅ lyric 类型: ${lyricContent.runtimeType}');
+          print('   ✅ lyric 长度: ${lyricContent?.length ?? 0}');
+          if (lyricContent != null && lyricContent.isNotEmpty) {
+            final preview = lyricContent.substring(0, lyricContent.length > 100 ? 100 : lyricContent.length);
+            print('   ✅ lyric 前100字符: $preview');
+          } else {
+            print('   ⚠️ lyric 为空或null');
+          }
+        } else {
+          print('   ❌ 后端响应中不包含 lyric 字段');
+        }
+        if (data.containsKey('tlyric')) {
+          final tlyricContent = data['tlyric'] as String?;
+          print('   ✅ tlyric 类型: ${tlyricContent.runtimeType}');
+          print('   ✅ tlyric 长度: ${tlyricContent?.length ?? 0}');
+        } else {
+          print('   ℹ️ 后端响应中不包含 tlyric 字段（可能无翻译）');
+        }
+
         if (data['status'] == 200) {
           SongDetail songDetail;
           
@@ -286,19 +316,26 @@ class MusicService extends ChangeNotifier {
             final lyricData = data['lyric'] as Map<String, dynamic>?;
             final musicUrls = data['music_urls'] as Map<String, dynamic>?;
             
-            // 选择音质（优先级：flac > 320 > 128）
+            // 根据用户选择的音质选择播放URL
             String playUrl = '';
             String bitrate = '';
             if (musicUrls != null) {
-              if (musicUrls['flac'] != null) {
-                playUrl = musicUrls['flac']['url'] ?? '';
-                bitrate = musicUrls['flac']['bitrate'] ?? 'FLAC';
-              } else if (musicUrls['320'] != null) {
-                playUrl = musicUrls['320']['url'] ?? '';
-                bitrate = musicUrls['320']['bitrate'] ?? '320kbps';
-              } else if (musicUrls['128'] != null) {
-                playUrl = musicUrls['128']['url'] ?? '';
-                bitrate = musicUrls['128']['bitrate'] ?? '128kbps';
+              // 使用 AudioQualityService 选择最佳音质
+              playUrl = AudioQualityService().selectBestQQMusicUrl(musicUrls) ?? '';
+              
+              // 获取对应的 bitrate 信息
+              final qualityKey = AudioQualityService().getQQMusicQualityKey();
+              if (musicUrls[qualityKey] != null) {
+                bitrate = musicUrls[qualityKey]['bitrate'] ?? qualityKey;
+              } else {
+                // 降级时获取实际使用的音质
+                if (musicUrls['flac'] != null && playUrl == musicUrls['flac']['url']) {
+                  bitrate = musicUrls['flac']['bitrate'] ?? 'FLAC';
+                } else if (musicUrls['320'] != null && playUrl == musicUrls['320']['url']) {
+                  bitrate = musicUrls['320']['bitrate'] ?? '320kbps';
+                } else if (musicUrls['128'] != null && playUrl == musicUrls['128']['url']) {
+                  bitrate = musicUrls['128']['bitrate'] ?? '128kbps';
+                }
               }
             }
             
@@ -342,15 +379,22 @@ class MusicService extends ChangeNotifier {
             );
           } else {
             // 网易云音乐（原有格式）
+            print('🔧 [MusicService] 开始解析网易云音乐数据...');
             songDetail = SongDetail.fromJson(data, source: source);
+            print('🔧 [MusicService] 解析完成，检查 SongDetail 对象:');
+            print('   songDetail.lyric 长度: ${songDetail.lyric.length}');
+            print('   songDetail.tlyric 长度: ${songDetail.tlyric.length}');
           }
           
           print('✅ [MusicService] 成功获取歌曲详情: ${songDetail.name}');
+          print('   🆔 ID: ${songDetail.id} (类型: ${songDetail.id.runtimeType})');
           print('   🎵 艺术家: ${songDetail.arName}');
           print('   💿 专辑: ${songDetail.alName}');
           print('   🎼 音质: ${songDetail.level}');
           print('   📦 大小: ${songDetail.size}');
           print('   🔗 URL: ${songDetail.url.isNotEmpty ? "已获取" : "无"}');
+          print('   📝 歌词: ${songDetail.lyric.isNotEmpty ? "${songDetail.lyric.length} 字符" : "无"}');
+          print('   🌏 翻译: ${songDetail.tlyric.isNotEmpty ? "${songDetail.tlyric.length} 字符" : "无"}');
           
           DeveloperModeService().addLog('✅ [MusicService] 成功获取歌曲: ${songDetail.name}');
 

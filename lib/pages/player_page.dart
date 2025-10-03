@@ -6,10 +6,19 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:palette_generator/palette_generator.dart';
 import '../services/player_service.dart';
+import '../services/playback_mode_service.dart';
+import '../services/play_history_service.dart';
+import '../services/favorite_service.dart';
+import '../services/playlist_service.dart';
+import '../services/playlist_queue_service.dart';
+import '../services/download_service.dart';
 import '../models/lyric_line.dart';
+import '../models/track.dart';
+import '../models/song_detail.dart';
 import '../utils/lyric_parser.dart';
+import 'mobile_player_page.dart'; // 移动端播放器页面
 
-/// 全屏播放器页面
+/// 全屏播放器页面（根据平台自动选择布局）
 class PlayerPage extends StatefulWidget {
   const PlayerPage({super.key});
 
@@ -17,15 +26,33 @@ class PlayerPage extends StatefulWidget {
   State<PlayerPage> createState() => _PlayerPageState();
 }
 
-class _PlayerPageState extends State<PlayerPage> with WindowListener {
+class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProviderStateMixin {
   final ScrollController _lyricScrollController = ScrollController();
   List<LyricLine> _lyrics = [];
   int _currentLyricIndex = -1;
   bool _isMaximized = false; // 窗口是否最大化
+  bool _showPlaylist = false; // 是否显示播放列表
+  bool _showTranslation = true; // 是否显示译文
+  late AnimationController _playlistAnimationController;
+  late Animation<Offset> _playlistSlideAnimation;
+  String? _lastTrackId; // 用于检测歌曲切换
 
   @override
   void initState() {
     super.initState();
+    
+    // 初始化播放列表动画控制器
+    _playlistAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _playlistSlideAnimation = Tween<Offset>(
+      begin: const Offset(1.0, 0.0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _playlistAnimationController,
+      curve: Curves.easeInOut,
+    ));
     
     // 监听播放器状态
     PlayerService().addListener(_onPlayerStateChanged);
@@ -38,6 +65,11 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
     
     // 延迟执行耗时操作，避免阻塞页面打开动画
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 初始化当前歌曲ID
+      final currentTrack = PlayerService().currentTrack;
+      _lastTrackId = currentTrack != null 
+          ? '${currentTrack.source.name}_${currentTrack.id}' 
+          : null;
       _loadLyrics(); // 歌词解析（可能耗时）
     });
   }
@@ -71,6 +103,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
   @override
   void dispose() {
     _lyricScrollController.dispose();
+    _playlistAnimationController.dispose();
     PlayerService().removeListener(_onPlayerStateChanged);
     if (Platform.isWindows) {
       windowManager.removeListener(this);
@@ -80,43 +113,144 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
 
   void _onPlayerStateChanged() {
     if (mounted) {
-      // 只更新歌词，不触发整页重建
-      _updateCurrentLyric();
+      // 检测歌曲是否切换
+      final currentTrack = PlayerService().currentTrack;
+      final currentTrackId = currentTrack != null 
+          ? '${currentTrack.source.name}_${currentTrack.id}' 
+          : null;
+      
+      if (currentTrackId != _lastTrackId) {
+        // 歌曲已切换，重新加载歌词
+        print('🎵 [PlayerPage] 检测到歌曲切换，重新加载歌词');
+        _lastTrackId = currentTrackId;
+        _lyrics = [];
+        _currentLyricIndex = -1;
+        _loadLyrics();
+        setState(() {}); // 触发重建以更新UI
+      } else {
+        // 只更新歌词行索引，不触发整页重建
+        _updateCurrentLyric();
+      }
     }
+  }
+
+  /// 切换播放列表显示状态
+  void _togglePlaylist() {
+    setState(() {
+      _showPlaylist = !_showPlaylist;
+      if (_showPlaylist) {
+        _playlistAnimationController.forward();
+      } else {
+        _playlistAnimationController.reverse();
+      }
+    });
   }
 
   /// 加载歌词（异步执行，不阻塞 UI）
   Future<void> _loadLyrics() async {
-    final song = PlayerService().currentSong;
-    if (song == null) return;
+    final currentTrack = PlayerService().currentTrack;
+    if (currentTrack == null) return;
+
+    print('🔍 [PlayerPage] 开始加载歌词，当前 Track: ${currentTrack.name}');
+    print('   Track ID: ${currentTrack.id} (类型: ${currentTrack.id.runtimeType})');
+
+    // 等待 currentSong 更新（最多等待3秒）
+    SongDetail? song;
+    final startTime = DateTime.now();
+    int attemptCount = 0;
+    
+    while (song == null && DateTime.now().difference(startTime).inSeconds < 3) {
+      song = PlayerService().currentSong;
+      attemptCount++;
+      
+      // 验证 currentSong 是否匹配 currentTrack
+      if (song != null) {
+        final songId = song.id.toString();
+        final trackId = currentTrack.id.toString();
+        
+        if (attemptCount == 1) {
+          print('🔍 [PlayerPage] 找到 currentSong: ${song.name}');
+          print('   Song ID: ${song.id} (类型: ${song.id.runtimeType})');
+          print('   Track ID: ${currentTrack.id} (类型: ${currentTrack.id.runtimeType})');
+          print('   ID 匹配: ${songId == trackId}');
+        }
+        
+        // 如果 ID 不匹配，说明 currentSong 还没更新
+        if (songId != trackId) {
+          if (attemptCount <= 3) {
+            print('⚠️ [PlayerPage] ID 不匹配！Song ID: "$songId" vs Track ID: "$trackId"');
+          }
+          song = null;
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      } else {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+    }
+    
+    if (song == null) {
+      print('❌ [PlayerPage] 等待歌曲详情超时！');
+      print('   尝试次数: $attemptCount');
+      print('   Track: ${currentTrack.name} (ID: ${currentTrack.id})');
+      final currentSong = PlayerService().currentSong;
+      if (currentSong != null) {
+        print('   CurrentSong 存在但 ID 不匹配: ${currentSong.name} (ID: ${currentSong.id})');
+      } else {
+        print('   CurrentSong 为 null');
+      }
+      return;
+    }
+
+    // 使用本地变量确保非空
+    final songDetail = song;
 
     try {
+      print('📝 [PlayerPage] 开始解析歌词');
+      print('   歌曲名: ${songDetail.name}');
+      print('   歌曲ID: ${songDetail.id}');
+      print('   原始歌词长度: ${songDetail.lyric.length} 字符');
+      print('   翻译长度: ${songDetail.tlyric.length} 字符');
+      
+      // 关键诊断：检查歌词内容
+      if (songDetail.lyric.isEmpty) {
+        print('   ❌ 错误：PlayerPage 读取到的 currentSong.lyric 为空！');
+        print('   这说明 PlayerService.currentSong 中的歌词确实是空的');
+      } else {
+        print('   ✅ PlayerPage 成功读取到歌词数据');
+        print('   歌词预览: ${songDetail.lyric.substring(0, songDetail.lyric.length > 50 ? 50 : songDetail.lyric.length)}...');
+      }
+      
       // 使用 Future.microtask 确保异步执行
       await Future.microtask(() {
         // 根据音乐来源选择不同的解析器
-        switch (song.source.name) {
+        switch (songDetail.source.name) {
           case 'netease':
             _lyrics = LyricParser.parseNeteaseLyric(
-              song.lyric,
-              translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+              songDetail.lyric,
+              translation: songDetail.tlyric.isNotEmpty ? songDetail.tlyric : null,
             );
             break;
           case 'qq':
             _lyrics = LyricParser.parseQQLyric(
-              song.lyric,
-              translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+              songDetail.lyric,
+              translation: songDetail.tlyric.isNotEmpty ? songDetail.tlyric : null,
             );
             break;
           case 'kugou':
             _lyrics = LyricParser.parseKugouLyric(
-              song.lyric,
-              translation: song.tlyric.isNotEmpty ? song.tlyric : null,
+              songDetail.lyric,
+              translation: songDetail.tlyric.isNotEmpty ? songDetail.tlyric : null,
             );
             break;
         }
       });
 
-      print('🎵 [PlayerPage] 加载歌词: ${_lyrics.length} 行');
+      if (_lyrics.isEmpty && songDetail.lyric.isNotEmpty) {
+        print('⚠️ [PlayerPage] 歌词解析结果为空，但原始歌词不为空！');
+        print('   原始歌词前100字符: ${songDetail.lyric.substring(0, songDetail.lyric.length > 100 ? 100 : songDetail.lyric.length)}');
+      }
+
+      print('🎵 [PlayerPage] 加载歌词: ${_lyrics.length} 行 (${songDetail.name})');
       
       // 加载歌词后，更新并滚动到当前位置
       if (_lyrics.isNotEmpty && mounted) {
@@ -126,6 +260,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
       }
     } catch (e) {
       print('❌ [PlayerPage] 加载歌词失败: $e');
+      print('   Stack trace: ${StackTrace.current}');
     }
   }
 
@@ -146,9 +281,152 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
     }
   }
 
+  /// 判断是否应该显示译文按钮
+  /// 只有当歌词非中文且存在翻译时才显示
+  bool _shouldShowTranslationButton() {
+    if (_lyrics.isEmpty) return false;
+    
+    // 检查是否有翻译
+    final hasTranslation = _lyrics.any((lyric) => 
+      lyric.translation != null && lyric.translation!.isNotEmpty
+    );
+    
+    if (!hasTranslation) return false;
+    
+    // 检查原文是否为中文（检查前几行非空歌词）
+    final sampleLyrics = _lyrics
+        .where((lyric) => lyric.text.trim().isNotEmpty)
+        .take(5)
+        .map((lyric) => lyric.text)
+        .join('');
+    
+    if (sampleLyrics.isEmpty) return false;
+    
+    // 判断是否主要为中文（中文字符占比）
+    final chineseCount = sampleLyrics.runes.where((rune) {
+      return (rune >= 0x4E00 && rune <= 0x9FFF) || // 基本汉字
+             (rune >= 0x3400 && rune <= 0x4DBF) || // 扩展A
+             (rune >= 0x20000 && rune <= 0x2A6DF); // 扩展B
+    }).length;
+    
+    final totalCount = sampleLyrics.runes.length;
+    final chineseRatio = totalCount > 0 ? chineseCount / totalCount : 0;
+    
+    // 如果中文字符占比小于30%，认为是非中文歌词
+    return chineseRatio < 0.3;
+  }
+
+  /// 显示添加到歌单对话框
+  void _showAddToPlaylistDialog(Track track) {
+    final playlistService = PlaylistService();
+    
+    // 确保已加载歌单列表
+    if (playlistService.playlists.isEmpty) {
+      playlistService.loadPlaylists();
+    }
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => AnimatedBuilder(
+        animation: playlistService,
+        builder: (context, child) {
+          final playlists = playlistService.playlists;
+          
+          if (playlists.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32.0),
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
+
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      const Text(
+                        '添加到歌单',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: playlists.length,
+                    itemBuilder: (context, index) {
+                      final playlist = playlists[index];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: playlist.isDefault
+                              ? Colors.red.withOpacity(0.2)
+                              : Colors.blue.withOpacity(0.2),
+                          child: Icon(
+                            playlist.isDefault
+                                ? Icons.favorite
+                                : Icons.queue_music,
+                            color: playlist.isDefault ? Colors.red : Colors.blue,
+                            size: 20,
+                          ),
+                        ),
+                        title: Text(playlist.name),
+                        subtitle: Text('${playlist.trackCount} 首歌曲'),
+                        onTap: () async {
+                          Navigator.pop(context);
+                          final success = await playlistService.addTrackToPlaylist(
+                            playlist.id,
+                            track,
+                          );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  success
+                                      ? '已添加到「${playlist.name}」'
+                                      : '添加失败',
+                                ),
+                                duration: const Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
+    // 移动平台使用专门的移动端播放器布局
+    if (Platform.isAndroid || Platform.isIOS) {
+      return const MobilePlayerPage();
+    }
+    
+    // 桌面平台使用原有的桌面布局
     final player = PlayerService();
     final song = player.currentSong;
     final track = player.currentTrack;
@@ -210,6 +488,27 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
                     },
                   ),
                 ],
+              ),
+            ),
+
+            // 播放列表侧板背景遮罩
+            if (_showPlaylist)
+              GestureDetector(
+                onTap: _togglePlaylist,
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                  child: Container(
+                    color: Colors.black.withOpacity(0.3),
+                  ),
+                ),
+              ),
+            
+            // 播放列表内容
+            SlideTransition(
+              position: _playlistSlideAnimation,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: _buildPlaylistPanel(),
               ),
             ),
           ],
@@ -292,7 +591,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
           tooltip: _isMaximized ? '还原' : '最大化',
         ),
         _buildWindowButton(
-          icon: Icons.close,
+          icon: Icons.close_rounded,
           onPressed: () => windowManager.close(),
           tooltip: '关闭',
           isClose: true,
@@ -557,6 +856,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
                       fontSize: isCurrent ? 18 : 15,
                       fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
                       height: 1.4,
+                      fontFamily: 'Microsoft YaHei', // 使用微软雅黑字体
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -571,8 +871,8 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          // 翻译歌词
-                          if (lyric.translation != null && lyric.translation!.isNotEmpty)
+                          // 翻译歌词（根据开关显示）
+                          if (_showTranslation && lyric.translation != null && lyric.translation!.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 2),
                               child: Text(
@@ -585,6 +885,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
                                       ? Colors.white.withOpacity(0.75)
                                       : Colors.white.withOpacity(0.35),
                                   fontSize: isCurrent ? 13 : 12,
+                                  fontFamily: 'Microsoft YaHei', // 使用微软雅黑字体
                                 ),
                               ),
                             ),
@@ -697,15 +998,112 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
 
   /// 构建控制按钮
   Widget _buildControls(PlayerService player) {
+    final currentTrack = player.currentTrack;
+    
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // 上一曲（暂未实现）
-        IconButton(
-          icon: const Icon(Icons.skip_previous, color: Colors.white54),
-          iconSize: 40,
-          onPressed: null, // TODO: 实现上一曲
+        // 译文显示开关（只在非中文歌词且有翻译时显示）
+        if (_shouldShowTranslationButton()) ...[
+          IconButton(
+            icon: Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: _showTranslation ? Colors.white.withOpacity(0.2) : Colors.transparent,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Center(
+                child: Text(
+                  '译',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Microsoft YaHei',
+                  ),
+                ),
+              ),
+            ),
+            onPressed: () {
+              setState(() {
+                _showTranslation = !_showTranslation;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(_showTranslation ? '已显示译文' : '已隐藏译文'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+            },
+            tooltip: _showTranslation ? '隐藏译文' : '显示译文',
+          ),
+          const SizedBox(width: 20),
+        ],
+        
+        // 播放模式切换
+        AnimatedBuilder(
+          animation: PlaybackModeService(),
+          builder: (context, child) {
+            final mode = PlaybackModeService().currentMode;
+            IconData icon;
+            switch (mode) {
+              case PlaybackMode.sequential:
+                icon = Icons.repeat_rounded;
+                break;
+              case PlaybackMode.repeatOne:
+                icon = Icons.repeat_one_rounded;
+                break;
+              case PlaybackMode.shuffle:
+                icon = Icons.shuffle_rounded;
+                break;
+            }
+            
+            return IconButton(
+              icon: Icon(icon, color: Colors.white),
+              iconSize: 30,
+              onPressed: () {
+                PlaybackModeService().toggleMode();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('播放模式: ${PlaybackModeService().getModeName()}'),
+                    duration: const Duration(seconds: 1),
+                  ),
+                );
+              },
+              tooltip: PlaybackModeService().getModeName(),
+            );
+          },
         ),
+        
+        const SizedBox(width: 20),
+        
+        // 上一曲
+        IconButton(
+          icon: Icon(
+            Icons.skip_previous_rounded,
+            color: player.hasPrevious ? Colors.white : Colors.white38,
+          ),
+          iconSize: 42,
+          onPressed: player.hasPrevious ? player.playPrevious : null,
+          tooltip: '上一首',
+        ),
+        
+        const SizedBox(width: 20),
+        
+        // 添加到歌单按钮
+        if (currentTrack != null)
+          IconButton(
+            icon: const Icon(
+              Icons.playlist_add_rounded,
+              color: Colors.white,
+            ),
+            iconSize: 30,
+            onPressed: () => _showAddToPlaylistDialog(currentTrack),
+            tooltip: '添加到歌单',
+          ),
+        
+        const SizedBox(width: 20),
         
         // 播放/暂停
         Container(
@@ -729,7 +1127,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
                 )
               : IconButton(
                   icon: Icon(
-                    player.isPlaying ? Icons.pause : Icons.play_arrow,
+                    player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                     color: Colors.black87,
                   ),
                   iconSize: 40,
@@ -737,14 +1135,132 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
                 ),
         ),
         
-        // 下一曲（暂未实现）
+        const SizedBox(width: 20),
+        
+        // 下一曲
         IconButton(
-          icon: const Icon(Icons.skip_next, color: Colors.white54),
-          iconSize: 40,
-          onPressed: null, // TODO: 实现下一曲
+          icon: Icon(
+            Icons.skip_next_rounded,
+            color: player.hasNext ? Colors.white : Colors.white38,
+          ),
+          iconSize: 42,
+          onPressed: player.hasNext ? player.playNext : null,
+          tooltip: '下一首',
+        ),
+        
+        const SizedBox(width: 20),
+        
+        // 下载按钮
+        if (currentTrack != null && player.currentSong != null)
+          AnimatedBuilder(
+            animation: DownloadService(),
+            builder: (context, child) {
+              final downloadService = DownloadService();
+              final isDownloading = downloadService.downloadTasks.containsKey(
+                '${currentTrack.source.name}_${currentTrack.id}'
+              );
+              
+              return IconButton(
+                icon: Icon(
+                  isDownloading ? Icons.downloading_rounded : Icons.download_rounded,
+                  color: Colors.white,
+                ),
+                iconSize: 30,
+                onPressed: isDownloading ? null : () => _handleDownload(player),
+                tooltip: isDownloading ? '下载中...' : '下载',
+              );
+            },
+          ),
+        
+        const SizedBox(width: 20),
+        
+        // 播放列表按钮
+        IconButton(
+          icon: const Icon(Icons.queue_music_rounded, color: Colors.white),
+          iconSize: 30,
+          onPressed: _togglePlaylist,
+          tooltip: '播放列表',
         ),
       ],
     );
+  }
+
+  /// 处理下载
+  Future<void> _handleDownload(PlayerService player) async {
+    final currentTrack = player.currentTrack;
+    final currentSong = player.currentSong;
+    
+    if (currentTrack == null || currentSong == null) {
+      return;
+    }
+
+    try {
+      // 检查是否已下载
+      final isDownloaded = await DownloadService().isDownloaded(currentTrack);
+      
+      if (isDownloaded) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('该歌曲已下载'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      // 显示下载确认
+      if (mounted) {
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('下载歌曲'),
+            content: Text('确定要下载《${currentTrack.name}》吗？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('下载'),
+              ),
+            ],
+          ),
+        );
+
+        if (confirm != true) return;
+      }
+
+      // 开始下载
+      final success = await DownloadService().downloadSong(
+        currentTrack,
+        currentSong,
+        onProgress: (progress) {
+          // 下载进度会通过 DownloadService 的 notifyListeners 自动更新UI
+        },
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? '下载成功！' : '下载失败'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ [PlayerPage] 下载失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('下载失败: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   /// 格式化时长
@@ -752,6 +1268,257 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener {
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  /// 构建播放列表面板
+  Widget _buildPlaylistPanel() {
+    final queueService = PlaylistQueueService();
+    final history = PlayHistoryService().history;
+    final currentTrack = PlayerService().currentTrack;
+    
+    // 优先使用播放队列，如果没有队列则使用播放历史
+    final bool hasQueue = queueService.hasQueue;
+    final List<dynamic> displayList = hasQueue 
+        ? queueService.queue 
+        : history.map((h) => h.toTrack()).toList();
+    final String listTitle = hasQueue 
+        ? '播放队列 (${queueService.source.name})' 
+        : '播放历史';
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(16),
+        bottomLeft: Radius.circular(16),
+      ),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: Container(
+          width: 400,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.7),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(16),
+              bottomLeft: Radius.circular(16),
+            ),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 20,
+                offset: const Offset(-5, 0),
+              ),
+            ],
+          ),
+          child: Column(
+        children: [
+          // 标题栏
+          Container(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.queue_music,
+                  color: Colors.white,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  listTitle,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${displayList.length} 首',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.6),
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                  onPressed: _togglePlaylist,
+                  tooltip: '关闭',
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(color: Colors.white24, height: 1),
+
+          // 播放列表
+          Expanded(
+            child: displayList.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.music_off,
+                          size: 64,
+                          color: Colors.white.withOpacity(0.3),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '播放列表为空',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: displayList.length,
+                    itemBuilder: (context, index) {
+                      final item = displayList[index];
+                      // 转换为 Track（如果是 Track 就直接用，如果是 PlayHistoryItem 就调用 toTrack）
+                      final track = item is Track ? item : (item as PlayHistoryItem).toTrack();
+                      final isCurrentTrack = currentTrack != null &&
+                          track.id.toString() == currentTrack.id.toString() &&
+                          track.source == currentTrack.source;
+
+                      return _buildPlaylistItemFromTrack(track, index, isCurrentTrack);
+                    },
+                  ),
+          ),
+        ],
+      ),
+        ),
+      ),
+    );
+  }
+
+  /// 构建播放列表项（从 Track）
+  Widget _buildPlaylistItemFromTrack(Track track, int index, bool isCurrentTrack) {
+    return Material(
+      color: isCurrentTrack 
+          ? Colors.white.withOpacity(0.1) 
+          : Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          PlayerService().playTrack(track);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('正在播放: ${track.name}'),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              // 序号或正在播放图标
+              SizedBox(
+                width: 40,
+                child: isCurrentTrack
+                    ? const Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      )
+                    : Text(
+                        '${index + 1}',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.5),
+                          fontSize: 14,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+              ),
+
+              // 封面
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: CachedNetworkImage(
+                  imageUrl: track.picUrl,
+                  width: 50,
+                  height: 50,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    width: 50,
+                    height: 50,
+                    color: Colors.white12,
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    width: 50,
+                    height: 50,
+                    color: Colors.white12,
+                    child: const Icon(
+                      Icons.music_note,
+                      color: Colors.white38,
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              // 歌曲信息
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      track.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isCurrentTrack ? Colors.white : Colors.white.withOpacity(0.9),
+                        fontSize: 15,
+                        fontWeight: isCurrentTrack ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      track.artists,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.5),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 音乐平台图标
+              Text(
+                _getSourceIcon(track.source),
+                style: const TextStyle(fontSize: 16),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 获取音乐平台图标
+  String _getSourceIcon(source) {
+    switch (source.toString()) {
+      case 'MusicSource.netease':
+        return '🎵';
+      case 'MusicSource.qq':
+        return '🎶';
+      case 'MusicSource.kugou':
+        return '🎼';
+      default:
+        return '🎵';
+    }
   }
 }
 

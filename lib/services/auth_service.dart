@@ -360,6 +360,8 @@ class AuthService extends ChangeNotifier {
     // 清除本地存储
     await _clearUserFromStorage();
     
+    // 清除收藏列表（需要在这里导入 FavoriteService，但为避免循环依赖，改为在 FavoriteService 中监听登出）
+    
     DeveloperModeService().addLog('👋 [AuthService] 用户退出登录: $username');
     
     notifyListeners();

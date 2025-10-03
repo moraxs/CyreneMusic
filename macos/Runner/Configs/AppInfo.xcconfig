@@ -8,7 +8,7 @@
 PRODUCT_NAME = cyrene_music
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.cyreneMusic
+PRODUCT_BUNDLE_IDENTIFIER = com.cyrene.music
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2025 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2025 Cyrene Music. All rights reserved.

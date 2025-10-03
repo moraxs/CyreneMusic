@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
+            VALUE "CompanyName", "Cyrene Music" "\0"
             VALUE "FileDescription", "cyrene_music" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "cyrene_music" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2025 Cyrene Music. All rights reserved." "\0"
             VALUE "OriginalFilename", "cyrene_music.exe" "\0"
             VALUE "ProductName", "cyrene_music" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

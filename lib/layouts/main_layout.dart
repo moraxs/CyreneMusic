@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../widgets/custom_title_bar.dart';
 import '../widgets/mini_player.dart';
 import '../pages/home_page.dart';
+import '../pages/history_page.dart';
+import '../pages/playlists_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/developer_page.dart';
 import '../services/auth_service.dart';
@@ -27,6 +29,8 @@ class _MainLayoutState extends State<MainLayout> {
   List<Widget> get _pages {
     final pages = <Widget>[
       const HomePage(),
+      const HistoryPage(),
+      const PlaylistsPage(),
       const SettingsPage(),
     ];
     
@@ -59,22 +63,37 @@ class _MainLayoutState extends State<MainLayout> {
 
   void _onAuthChanged() {
     if (mounted) {
-      setState(() {});
+      // 使用 addPostFrameCallback 避免在构建期间调用 setState
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
     }
   }
 
   void _onLayoutPreferenceChanged() {
     if (mounted) {
-      setState(() {});
+      // 使用 addPostFrameCallback 避免在构建期间调用 setState
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
     }
   }
 
   void _onDeveloperModeChanged() {
     if (mounted) {
-      setState(() {
-        // 如果当前选中的是开发者页面但模式被关闭，切换到首页
-        if (_selectedIndex >= 2 && !DeveloperModeService().isDeveloperMode) {
-          _selectedIndex = 0;
+      // 使用 addPostFrameCallback 延迟到构建完成后再调用 setState
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            // 如果当前选中的是开发者页面但模式被关闭，切换到首页
+            if (_selectedIndex >= 4 && !DeveloperModeService().isDeveloperMode) {
+              _selectedIndex = 0;
+            }
+          });
         }
       });
     }
@@ -257,7 +276,7 @@ class _MainLayoutState extends State<MainLayout> {
         selectedIndex: _selectedIndex,
         onDestinationSelected: (int index) {
           // 如果点击的是设置按钮，触发开发者模式检测
-          if (index == 1) {
+          if (index == 3) {
             DeveloperModeService().onSettingsClicked();
           }
           
@@ -272,6 +291,16 @@ class _MainLayoutState extends State<MainLayout> {
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: '首页',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.history_outlined),
+            selectedIcon: Icon(Icons.history),
+            label: '历史',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.library_music_outlined),
+            selectedIcon: Icon(Icons.library_music),
+            label: '歌单',
           ),
           const NavigationDestination(
             icon: Icon(Icons.settings_outlined),
@@ -304,7 +333,7 @@ class _MainLayoutState extends State<MainLayout> {
       selectedIndex: _selectedIndex,
       onDestinationSelected: (int index) {
         // 如果点击的是设置按钮，触发开发者模式检测
-        if (index == 1) {
+        if (index == 3) {
           DeveloperModeService().onSettingsClicked();
         }
         
@@ -334,6 +363,16 @@ class _MainLayoutState extends State<MainLayout> {
           icon: Icon(Icons.home_outlined),
           selectedIcon: Icon(Icons.home),
           label: Text('首页'),
+        ),
+        const NavigationRailDestination(
+          icon: Icon(Icons.history_outlined),
+          selectedIcon: Icon(Icons.history),
+          label: Text('历史'),
+        ),
+        const NavigationRailDestination(
+          icon: Icon(Icons.library_music_outlined),
+          selectedIcon: Icon(Icons.library_music),
+          label: Text('歌单'),
         ),
         const NavigationRailDestination(
           icon: Icon(Icons.settings_outlined),

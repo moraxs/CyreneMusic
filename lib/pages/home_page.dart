@@ -1,14 +1,21 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/music_service.dart';
 import '../services/player_service.dart';
+import '../services/version_service.dart';
+import '../services/auth_service.dart';
 import '../models/toplist.dart';
 import '../models/track.dart';
+import '../models/version_info.dart';
 import '../widgets/toplist_card.dart';
 import '../widgets/track_list_tile.dart';
 import '../widgets/search_widget.dart';
 import '../utils/page_visibility_notifier.dart';
+import '../pages/auth/login_page.dart';
 
 /// 首页 - 展示音乐和视频内容
 class HomePage extends StatefulWidget {
@@ -50,6 +57,9 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
       // 如果已有数据，初始化缓存并启动定时器
       _updateCachedTracksAndStartTimer();
     }
+    
+    // 🔍 首次进入时检查更新
+    _checkForUpdateOnce();
   }
 
   void _onPageVisibilityChanged() {
@@ -169,6 +179,224 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
     _startBannerTimer();
   }
 
+  /// 每次进入首页时检查更新
+  Future<void> _checkForUpdateOnce() async {
+    try {
+      // 延迟2秒后检查，避免影响首页加载
+      await Future.delayed(const Duration(seconds: 2));
+      
+      if (!mounted) return;
+      
+      print('🔍 [HomePage] 开始检查更新...');
+      
+      final versionInfo = await VersionService().checkForUpdate(silent: true);
+      
+      if (!mounted) return;
+      
+      // 如果有更新，检查是否应该提示
+      if (versionInfo != null && VersionService().hasUpdate) {
+        // 检查用户是否已忽略此版本
+        final shouldShow = await VersionService().shouldShowUpdateDialog(versionInfo);
+        if (shouldShow) {
+          _showUpdateDialog(versionInfo);
+        } else {
+          print('🔕 [HomePage] 用户已忽略此版本，不再提示');
+        }
+      }
+    } catch (e) {
+      print('❌ [HomePage] 检查更新失败: $e');
+    }
+  }
+
+  /// 显示更新提示对话框
+  void _showUpdateDialog(VersionInfo versionInfo) {
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: !versionInfo.forceUpdate, // 强制更新时不能关闭对话框
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.system_update, color: Colors.blue),
+            const SizedBox(width: 8),
+            const Text('发现新版本'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 版本信息
+              Text(
+                '最新版本: ${versionInfo.version}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                '当前版本: ${VersionService().currentVersion}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // 更新日志
+              const Text(
+                '更新内容：',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                versionInfo.changelog,
+                style: const TextStyle(fontSize: 14),
+              ),
+              
+              // 强制更新提示
+              if (versionInfo.forceUpdate) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning, color: Colors.orange.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '此版本为强制更新，请立即更新',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.orange.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          // 稍后提醒（仅非强制更新时显示）
+          if (!versionInfo.forceUpdate)
+            TextButton(
+              onPressed: () async {
+                // 保存用户忽略的版本号
+                await VersionService().ignoreCurrentVersion(versionInfo.version);
+                if (mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('已忽略版本 ${versionInfo.version}，有新版本时将再次提醒'),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              child: const Text('稍后提醒'),
+            ),
+          
+          // 立即更新
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _openDownloadUrl(versionInfo.downloadUrl);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('立即更新'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 打开下载链接
+  Future<void> _openDownloadUrl(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法打开下载链接')),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ [HomePage] 打开下载链接失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('打开链接失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 检查登录状态，如果未登录则跳转到登录页面
+  /// 返回 true 表示已登录或登录成功，返回 false 表示未登录或取消登录
+  Future<bool> _checkLoginStatus() async {
+    if (AuthService().isLoggedIn) {
+      return true;
+    }
+
+    // 显示提示并询问是否要登录
+    final shouldLogin = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('需要登录'),
+          ],
+        ),
+        content: const Text('此功能需要登录后才能使用，是否前往登录？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('去登录'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogin == true && mounted) {
+      // 跳转到登录页面
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const LoginPage(),
+        ),
+      );
+      
+      // 返回登录是否成功
+      return result == true && AuthService().isLoggedIn;
+    }
+
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context); // 必须调用以支持 AutomaticKeepAliveClientMixin
@@ -202,10 +430,14 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                   actions: [
                     IconButton(
                       icon: const Icon(Icons.search),
-                      onPressed: () {
-                        setState(() {
-                          _showSearch = true;
-                        });
+                      onPressed: () async {
+                        // 检查登录状态
+                        final isLoggedIn = await _checkLoginStatus();
+                        if (isLoggedIn && mounted) {
+                          setState(() {
+                            _showSearch = true;
+                          });
+                        }
                       },
                       tooltip: '搜索',
                     ),
@@ -382,15 +614,19 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                   final track = _cachedRandomTracks[index];
                   return _TrackBannerCard(
                     track: track,
-                    onTap: () {
-                      // 播放歌曲
-                      PlayerService().playTrack(track);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('正在加载：${track.name}'),
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
+                    onTap: () async {
+                      // 检查登录状态
+                      final isLoggedIn = await _checkLoginStatus();
+                      if (isLoggedIn && mounted) {
+                        // 播放歌曲
+                        PlayerService().playTrack(track);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('正在加载：${track.name}'),
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      }
                     },
                   );
                 },
@@ -487,14 +723,18 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
       child: Card(
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () {
-            PlayerService().playTrack(track);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('正在加载：${track.name}'),
-                duration: const Duration(seconds: 1),
-              ),
-            );
+          onTap: () async {
+            // 检查登录状态
+            final isLoggedIn = await _checkLoginStatus();
+            if (isLoggedIn && mounted) {
+              PlayerService().playTrack(track);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('正在加载：${track.name}'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+            }
           },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

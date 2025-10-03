@@ -11,18 +11,31 @@ enum BackendSourceType {
 class UrlService extends ChangeNotifier {
   static final UrlService _instance = UrlService._internal();
   factory UrlService() => _instance;
-  UrlService._internal() {
-    _loadSettings();
-  }
+  UrlService._internal();
 
   /// 官方源地址
-  static const String officialBaseUrl = 'http://127.0.0.1:4055';
+  static const String officialBaseUrl = 'https://music.cialloo.site';
 
   /// 当前源类型
   BackendSourceType _sourceType = BackendSourceType.official;
 
   /// 自定义源地址
   String _customBaseUrl = '';
+
+  /// 是否已初始化
+  bool _isInitialized = false;
+
+  /// 初始化服务（必须在应用启动时调用）
+  Future<void> initialize() async {
+    if (_isInitialized) {
+      print('⚠️ [UrlService] 已经初始化，跳过重复初始化');
+      return;
+    }
+    
+    await _loadSettings();
+    _isInitialized = true;
+    print('✅ [UrlService] 初始化完成');
+  }
 
   /// 从本地存储加载设置
   Future<void> _loadSettings() async {

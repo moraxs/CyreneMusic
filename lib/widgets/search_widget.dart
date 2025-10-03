@@ -4,6 +4,8 @@ import '../models/track.dart';
 import '../models/merged_track.dart';
 import '../services/search_service.dart';
 import '../services/player_service.dart';
+import '../services/auth_service.dart';
+import '../pages/auth/login_page.dart';
 
 /// 搜索组件（内嵌版本）
 class SearchWidget extends StatefulWidget {
@@ -41,7 +43,59 @@ class _SearchWidgetState extends State<SearchWidget> {
     }
   }
 
-  void _performSearch() {
+  /// 检查登录状态，如果未登录则跳转到登录页面
+  /// 返回 true 表示已登录或登录成功，返回 false 表示未登录或取消登录
+  Future<bool> _checkLoginStatus() async {
+    if (AuthService().isLoggedIn) {
+      return true;
+    }
+
+    // 显示提示并询问是否要登录
+    final shouldLogin = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('需要登录'),
+          ],
+        ),
+        content: const Text('此功能需要登录后才能使用，是否前往登录？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('去登录'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogin == true && mounted) {
+      // 跳转到登录页面
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const LoginPage(),
+        ),
+      );
+      
+      // 返回登录是否成功
+      return result == true && AuthService().isLoggedIn;
+    }
+
+    return false;
+  }
+
+  void _performSearch() async {
+    // 检查登录状态
+    final isLoggedIn = await _checkLoginStatus();
+    if (!isLoggedIn) return;
+
     final keyword = _searchController.text.trim();
     if (keyword.isNotEmpty) {
       _searchService.search(keyword);
@@ -123,13 +177,9 @@ class _SearchWidgetState extends State<SearchWidget> {
   }
 
   Widget _buildSearchResults(SearchResult result) {
-    // 如果没有搜索或搜索结果为空
+    // 如果没有搜索或搜索结果为空，显示搜索历史
     if (_searchService.currentKeyword.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.search,
-        title: '搜索音乐',
-        subtitle: '支持网易云、QQ音乐、酷狗音乐',
-      );
+      return _buildSearchHistory();
     }
 
     // 显示加载状态
@@ -285,16 +335,22 @@ class _SearchWidgetState extends State<SearchWidget> {
   }
 
   /// 播放合并后的歌曲（按优先级选择平台）
-  void _playMergedTrack(MergedTrack mergedTrack) {
+  void _playMergedTrack(MergedTrack mergedTrack) async {
+    // 检查登录状态
+    final isLoggedIn = await _checkLoginStatus();
+    if (!isLoggedIn) return;
+
     final bestTrack = mergedTrack.getBestTrack();
     PlayerService().playTrack(bestTrack);
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('正在播放: ${mergedTrack.name}'),
-        duration: const Duration(seconds: 1),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('正在播放: ${mergedTrack.name}'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
   }
 
   /// 显示平台选择器（长按时）
@@ -327,20 +383,138 @@ class _SearchWidgetState extends State<SearchWidget> {
               title: Text(track.getSourceName()),
               subtitle: Text(track.album),
               trailing: const Icon(Icons.play_arrow),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                PlayerService().playTrack(track);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('正在播放: ${track.name}'),
-                    duration: const Duration(seconds: 1),
-                  ),
-                );
+                // 检查登录状态
+                final isLoggedIn = await _checkLoginStatus();
+                if (isLoggedIn && mounted) {
+                  PlayerService().playTrack(track);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('正在播放: ${track.name}'),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                }
               },
             )),
           ],
         ),
       ),
+    );
+  }
+
+  /// 构建搜索历史列表
+  Widget _buildSearchHistory() {
+    final history = _searchService.searchHistory;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    // 如果没有历史记录，显示空状态
+    if (history.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.search,
+        title: '搜索音乐',
+        subtitle: '支持网易云、QQ音乐、酷狗音乐',
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // 标题栏
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.history,
+                  size: 20,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '搜索历史',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                      ),
+                ),
+              ],
+            ),
+            TextButton.icon(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('清空搜索历史'),
+                    content: const Text('确定要清空所有搜索历史吗？'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('取消'),
+                      ),
+                      FilledButton(
+                        onPressed: () {
+                          _searchService.clearSearchHistory();
+                          Navigator.pop(context);
+                        },
+                        child: const Text('清空'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              icon: const Icon(Icons.delete_outline, size: 18),
+              label: const Text('清空'),
+              style: TextButton.styleFrom(
+                foregroundColor: colorScheme.error,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        
+        // 历史记录列表
+        ...history.map((keyword) => Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading: Icon(
+              Icons.history,
+              color: colorScheme.primary,
+            ),
+            title: Text(keyword),
+            trailing: IconButton(
+              icon: Icon(
+                Icons.close,
+                size: 18,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              onPressed: () {
+                _searchService.removeSearchHistory(keyword);
+              },
+              tooltip: '删除',
+            ),
+            onTap: () {
+              // 点击历史记录进行搜索
+              _searchController.text = keyword;
+              _performSearch();
+            },
+          ),
+        )),
+        
+        const SizedBox(height: 16),
+        
+        // 提示信息
+        Center(
+          child: Text(
+            '点击历史记录快速搜索',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                ),
+          ),
+        ),
+      ],
     );
   }
 

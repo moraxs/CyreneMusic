@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart' as ap;
@@ -11,6 +12,10 @@ import '../models/track.dart';
 import 'music_service.dart';
 import 'cache_service.dart';
 import 'proxy_service.dart';
+import 'play_history_service.dart';
+import 'playback_mode_service.dart';
+import 'playlist_queue_service.dart';
+import 'audio_quality_service.dart';
 
 /// 播放状态枚举
 enum PlayerState {
@@ -66,6 +71,8 @@ class PlayerService extends ChangeNotifier {
         case ap.PlayerState.completed:
           _state = PlayerState.idle;
           _position = Duration.zero;
+          // 歌曲播放完毕，自动播放下一首
+          _playNextFromHistory();
           break;
         default:
           break;
@@ -98,8 +105,12 @@ class PlayerService extends ChangeNotifier {
   }
 
   /// 播放歌曲（通过Track对象）
-  Future<void> playTrack(Track track, {AudioQuality quality = AudioQuality.exhigh}) async {
+  Future<void> playTrack(Track track, {AudioQuality? quality}) async {
     try {
+      // 使用用户设置的音质，如果没有传入特定音质
+      final selectedQuality = quality ?? AudioQualityService().currentQuality;
+      print('🎵 [PlayerService] 播放音质: ${selectedQuality.toString()}');
+      
       // 清理上一首歌的临时文件
       await _cleanupCurrentTempFile();
       
@@ -109,6 +120,10 @@ class PlayerService extends ChangeNotifier {
       notifyListeners();
 
       print('🎵 [PlayerService] 开始播放: ${track.name} - ${track.artists}');
+      print('   Track ID: ${track.id} (类型: ${track.id.runtimeType})');
+      
+      // 记录到播放历史
+      await PlayHistoryService().addToHistory(track);
 
       // 1. 检查缓存
       final qualityStr = quality.toString().split('.').last;
@@ -138,11 +153,18 @@ class PlayerService extends ChangeNotifier {
             tlyric: metadata.tlyric,    // 从缓存恢复翻译
             source: track.source,
           );
+          
+          // 🔧 立即通知监听器，确保 PlayerPage 能获取到包含歌词的 currentSong
+          notifyListeners();
+          print('✅ [PlayerService] 已更新 currentSong（从缓存，包含歌词）');
 
           // 播放缓存文件
           await _audioPlayer.play(ap.DeviceFileSource(cachedFilePath));
           print('✅ [PlayerService] 从缓存播放: $cachedFilePath');
           print('📝 [PlayerService] 歌词已从缓存恢复');
+          
+          // 提取主题色（即使是缓存播放也需要更新主题色）
+          _extractThemeColorInBackground(metadata.picUrl);
           return;
         } else {
           print('⚠️ [PlayerService] 缓存文件无效，从网络获取');
@@ -153,7 +175,7 @@ class PlayerService extends ChangeNotifier {
       print('🌐 [PlayerService] 从网络获取歌曲');
       final songDetail = await MusicService().fetchSongDetail(
         songId: track.id,
-        quality: quality,
+        quality: selectedQuality,
         source: track.source,
       );
 
@@ -165,7 +187,22 @@ class PlayerService extends ChangeNotifier {
         return;
       }
 
+      // 检查歌词是否获取成功
+      print('📝 [PlayerService] 从网络获取的歌曲详情:');
+      print('   歌曲名: ${songDetail.name}');
+      print('   歌词长度: ${songDetail.lyric.length} 字符');
+      print('   翻译长度: ${songDetail.tlyric.length} 字符');
+      if (songDetail.lyric.isEmpty) {
+        print('   ⚠️ 警告：从网络获取的歌曲详情中歌词为空！');
+      } else {
+        print('   ✅ 歌词获取成功');
+      }
+
       _currentSong = songDetail;
+      
+      // 🔧 修复：立即通知监听器，让 PlayerPage 能获取到包含歌词的 currentSong
+      notifyListeners();
+      print('✅ [PlayerService] 已更新 currentSong 并通知监听器（包含歌词）');
 
       // 3. 播放音乐
       if (track.source == MusicSource.qq || track.source == MusicSource.kugou) {
@@ -446,6 +483,170 @@ class PlayerService extends ChangeNotifier {
     } catch (e) {
       print('❌ [PlayerService] 释放资源失败: $e');
     }
+  }
+
+  /// 播放完毕后自动播放下一首（根据播放模式）
+  Future<void> _playNextFromHistory() async {
+    try {
+      print('⏭️ [PlayerService] 歌曲播放完毕，检查播放模式...');
+      
+      final mode = PlaybackModeService().currentMode;
+      
+      switch (mode) {
+        case PlaybackMode.repeatOne:
+          // 单曲循环：重新播放当前歌曲
+          if (_currentTrack != null) {
+            print('🔂 [PlayerService] 单曲循环，重新播放当前歌曲');
+            await Future.delayed(const Duration(milliseconds: 500));
+            await playTrack(_currentTrack!);
+          }
+          break;
+          
+        case PlaybackMode.sequential:
+          // 顺序播放：播放历史中的下一首
+          await _playNext();
+          break;
+          
+        case PlaybackMode.shuffle:
+          // 随机播放：从历史中随机选一首
+          await _playRandomFromHistory();
+          break;
+      }
+    } catch (e) {
+      print('❌ [PlayerService] 自动播放下一首失败: $e');
+    }
+  }
+
+  /// 播放下一首（顺序播放模式）
+  Future<void> playNext() async {
+    final mode = PlaybackModeService().currentMode;
+    
+    if (mode == PlaybackMode.shuffle) {
+      await _playRandomFromHistory();
+    } else {
+      await _playNext();
+    }
+  }
+
+  /// 内部方法：播放下一首
+  Future<void> _playNext() async {
+    try {
+      print('⏭️ [PlayerService] 尝试播放下一首...');
+      
+      // 优先使用播放队列
+      if (PlaylistQueueService().hasQueue) {
+        final nextTrack = PlaylistQueueService().getNext();
+        if (nextTrack != null) {
+          print('✅ [PlayerService] 从播放队列获取下一首: ${nextTrack.name}');
+          await Future.delayed(const Duration(milliseconds: 500));
+          await playTrack(nextTrack);
+          return;
+        } else {
+          print('ℹ️ [PlayerService] 队列已播放完毕，清空队列');
+          PlaylistQueueService().clear();
+        }
+      }
+      
+      // 如果没有队列，使用播放历史
+      final nextTrack = PlayHistoryService().getNextTrack();
+      
+      if (nextTrack != null) {
+        print('✅ [PlayerService] 从播放历史获取下一首: ${nextTrack.name}');
+        await Future.delayed(const Duration(milliseconds: 500));
+        await playTrack(nextTrack);
+      } else {
+        print('ℹ️ [PlayerService] 没有更多歌曲可播放');
+      }
+    } catch (e) {
+      print('❌ [PlayerService] 播放下一首失败: $e');
+    }
+  }
+
+  /// 播放上一首
+  Future<void> playPrevious() async {
+    try {
+      print('⏮️ [PlayerService] 尝试播放上一首...');
+      
+      // 优先使用播放队列
+      if (PlaylistQueueService().hasQueue) {
+        final previousTrack = PlaylistQueueService().getPrevious();
+        if (previousTrack != null) {
+          print('✅ [PlayerService] 从播放队列获取上一首: ${previousTrack.name}');
+          await playTrack(previousTrack);
+          return;
+        }
+      }
+      
+      // 如果没有队列，使用播放历史
+      final history = PlayHistoryService().history;
+      
+      // 当前歌曲在历史记录的第0位，上一首在第2位（第1位是当前歌曲之前播放的）
+      if (history.length >= 3) {
+        final previousTrack = history[2].toTrack();
+        print('✅ [PlayerService] 从播放历史获取上一首: ${previousTrack.name}');
+        await playTrack(previousTrack);
+      } else {
+        print('ℹ️ [PlayerService] 没有上一首可播放');
+      }
+    } catch (e) {
+      print('❌ [PlayerService] 播放上一首失败: $e');
+    }
+  }
+
+  /// 随机播放：从队列或历史中随机选一首
+  Future<void> _playRandomFromHistory() async {
+    try {
+      print('🔀 [PlayerService] 随机播放模式');
+      
+      // 优先使用播放队列
+      if (PlaylistQueueService().hasQueue) {
+        final randomTrack = PlaylistQueueService().getRandomTrack();
+        if (randomTrack != null) {
+          print('✅ [PlayerService] 从播放队列随机选择: ${randomTrack.name}');
+          await Future.delayed(const Duration(milliseconds: 500));
+          await playTrack(randomTrack);
+          return;
+        }
+      }
+      
+      // 如果没有队列，使用播放历史
+      final history = PlayHistoryService().history;
+      
+      if (history.length >= 2) {
+        // 排除当前歌曲（第0位），从其他歌曲中随机选择
+        final random = Random();
+        final randomIndex = random.nextInt(history.length - 1) + 1;
+        final randomTrack = history[randomIndex].toTrack();
+        
+        print('✅ [PlayerService] 从播放历史随机选择: ${randomTrack.name}');
+        await Future.delayed(const Duration(milliseconds: 500));
+        await playTrack(randomTrack);
+      } else {
+        print('ℹ️ [PlayerService] 历史记录不足，无法随机播放');
+      }
+    } catch (e) {
+      print('❌ [PlayerService] 随机播放失败: $e');
+    }
+  }
+
+  /// 检查是否有上一首
+  bool get hasPrevious {
+    // 优先检查播放队列
+    if (PlaylistQueueService().hasQueue) {
+      return PlaylistQueueService().hasPrevious;
+    }
+    // 否则检查播放历史
+    return PlayHistoryService().history.length >= 3;
+  }
+
+  /// 检查是否有下一首
+  bool get hasNext {
+    // 优先检查播放队列
+    if (PlaylistQueueService().hasQueue) {
+      return PlaylistQueueService().hasNext;
+    }
+    // 否则检查播放历史
+    return PlayHistoryService().history.length >= 2;
   }
 }
 
