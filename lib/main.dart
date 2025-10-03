@@ -57,7 +57,7 @@ void main() async {
   await CacheService().initialize();
   DeveloperModeService().addLog('💾 缓存服务已初始化');
   
-  PlayerService().initialize();
+  await PlayerService().initialize();
   DeveloperModeService().addLog('🎵 播放器服务已初始化');
   
   // 初始化系统媒体控件
@@ -155,34 +155,70 @@ class MyApp extends StatelessWidget {
 }
 
 /// Windows 圆角窗口容器
-class _WindowsRoundedContainer extends StatelessWidget {
+class _WindowsRoundedContainer extends StatefulWidget {
   final Widget child;
   
   const _WindowsRoundedContainer({required this.child});
 
   @override
+  State<_WindowsRoundedContainer> createState() => _WindowsRoundedContainerState();
+}
+
+class _WindowsRoundedContainerState extends State<_WindowsRoundedContainer> with WindowListener {
+  bool _isMaximized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    _checkMaximizedState();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  Future<void> _checkMaximizedState() async {
+    final isMaximized = await windowManager.isMaximized();
+    if (mounted) {
+      setState(() {
+        _isMaximized = isMaximized;
+      });
+    }
+  }
+
+  @override
+  void onWindowMaximize() {
+    setState(() {
+      _isMaximized = true;
+    });
+  }
+
+  @override
+  void onWindowUnmaximize() {
+    setState(() {
+      _isMaximized = false;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     
-    // 添加外边距，使窗口内容与边缘有间隔
+    // 最大化时无边距和圆角，正常时有边距和圆角
     return Padding(
-      padding: const EdgeInsets.all(8.0),
+      padding: _isMaximized ? EdgeInsets.zero : const EdgeInsets.all(8.0),
       child: Container(
         decoration: BoxDecoration(
           color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 30,
-              spreadRadius: 0,
-              offset: const Offset(0, 10),
-            ),
-          ],
+          borderRadius: _isMaximized ? BorderRadius.zero : BorderRadius.circular(12),
+          // 移除阴影效果
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: child,
+          borderRadius: _isMaximized ? BorderRadius.zero : BorderRadius.circular(12),
+          child: widget.child,
         ),
       ),
     );

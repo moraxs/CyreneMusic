@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/music_service.dart';
 import '../services/player_service.dart';
 import '../models/toplist.dart';
 import '../models/track.dart';
 import '../widgets/toplist_card.dart';
 import '../widgets/track_list_tile.dart';
+import '../widgets/search_widget.dart';
 import '../utils/page_visibility_notifier.dart';
 
 /// 首页 - 展示音乐和视频内容
@@ -22,6 +24,7 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
   Timer? _bannerTimer;
   List<Track> _cachedRandomTracks = []; // 缓存随机歌曲列表
   bool _isPageVisible = true; // 页面是否可见
+  bool _showSearch = false; // 是否显示搜索界面
 
   @override
   bool get wantKeepAlive => true; // 保持页面状态
@@ -173,70 +176,77 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
     
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      body: CustomScrollView(
-        slivers: [
-          // 顶部标题
-          SliverAppBar(
-            floating: true,
-            snap: true,
-            backgroundColor: colorScheme.surface,
-            title: Text(
-              '首页',
-              style: TextStyle(
-                color: colorScheme.onSurface,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+      body: _showSearch 
+          ? SearchWidget(
+              onClose: () {
+                setState(() {
+                  _showSearch = false;
+                });
+              },
+            )
+          : CustomScrollView(
+              slivers: [
+                // 顶部标题
+                SliverAppBar(
+                  floating: true,
+                  snap: true,
+                  backgroundColor: colorScheme.surface,
+                  title: Text(
+                    '首页',
+                    style: TextStyle(
+                      color: colorScheme.onSurface,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.search),
+                      onPressed: () {
+                        setState(() {
+                          _showSearch = true;
+                        });
+                      },
+                      tooltip: '搜索',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: () {
+                        MusicService().refreshToplists();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('正在刷新榜单...')),
+                        );
+                      },
+                      tooltip: '刷新',
+                    ),
+                  ],
+                ),
+                
+                // 内容区域
+                SliverPadding(
+                  padding: const EdgeInsets.all(24.0),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      // 加载状态或错误提示
+                      if (MusicService().isLoading)
+                        _buildLoadingSection()
+                      else if (MusicService().errorMessage != null)
+                        _buildErrorSection()
+                      else if (MusicService().toplists.isEmpty)
+                        _buildEmptySection()
+                      else ...[
+                        // 轮播图
+                        _buildBannerSection(),
+                        const SizedBox(height: 32),
+                        
+                        // 热门榜单
+                        _buildToplistsGrid(),
+                      ],
+                    ]),
+                  ),
+                ),
+              ],
             ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.search),
-                onPressed: () {
-                  // TODO: 实现搜索功能
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('搜索功能开发中...')),
-                  );
-                },
-                tooltip: '搜索',
-              ),
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () {
-                  MusicService().refreshToplists();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('正在刷新榜单...')),
-                  );
-                },
-                tooltip: '刷新',
-              ),
-            ],
-          ),
-          
-          // 内容区域
-          SliverPadding(
-            padding: const EdgeInsets.all(24.0),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                // 加载状态或错误提示
-                if (MusicService().isLoading)
-                  _buildLoadingSection()
-                else if (MusicService().errorMessage != null)
-                  _buildErrorSection()
-                else if (MusicService().toplists.isEmpty)
-                  _buildEmptySection()
-                else ...[
-                  // 轮播图
-                  _buildBannerSection(),
-                  const SizedBox(height: 32),
-                  
-                  // 热门榜单
-                  _buildToplistsGrid(),
-                ],
-              ]),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -493,23 +503,33 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
               // 专辑封面
               Stack(
                 children: [
-                  Image.network(
-                    track.picUrl,
+                  CachedNetworkImage(
+                    imageUrl: track.picUrl,
                     width: 140,
                     height: 140,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: 140,
-                        height: 140,
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Icon(
-                          Icons.music_note,
-                          size: 48,
-                          color: colorScheme.onSurfaceVariant,
+                    placeholder: (context, url) => Container(
+                      width: 140,
+                      height: 140,
+                      color: colorScheme.surfaceContainerHighest,
+                      child: const Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                      );
-                    },
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      width: 140,
+                      height: 140,
+                      color: colorScheme.surfaceContainerHighest,
+                      child: Icon(
+                        Icons.music_note,
+                        size: 48,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                   // 排名标签
                   Positioned(
@@ -620,11 +640,29 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          toplist.coverImgUrl,
+                        child: CachedNetworkImage(
+                          imageUrl: toplist.coverImgUrl,
                           width: 80,
                           height: 80,
                           fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            width: 80,
+                            height: 80,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            child: const Center(
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            width: 80,
+                            height: 80,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            child: const Icon(Icons.music_note, size: 32),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -704,19 +742,27 @@ class _TrackBannerCard extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               // 封面图片
-              Image.network(
-                track.picUrl,
+              CachedNetworkImage(
+                imageUrl: track.picUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    child: Icon(
-                      Icons.music_note,
-                      size: 64,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                placeholder: (context, url) => Container(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: const Center(
+                    child: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                  );
-                },
+                  ),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: Icon(
+                    Icons.music_note,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
               // 渐变遮罩
               Container(

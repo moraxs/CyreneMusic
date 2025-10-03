@@ -175,7 +175,8 @@ class TrayService with TrayListener, WindowListener {
     final currentIsPlaying = player.isPlaying;
     final currentSong = player.currentSong;
     final currentTrack = player.currentTrack;
-    final currentSongId = currentSong?.id?.hashCode ?? currentTrack?.id;
+    // 使用 hashCode 统一处理 int 和 String 类型的 ID
+    final currentSongId = currentSong?.id?.hashCode ?? currentTrack?.id?.hashCode;
     final currentHasSong = currentSong != null || currentTrack != null;
     
     // 检查菜单是否需要更新

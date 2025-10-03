@@ -7,7 +7,7 @@ enum MusicSource {
 
 /// 歌曲模型
 class Track {
-  final int id;
+  final dynamic id;  // 支持 int 和 String 类型（网易云用int，QQ和酷狗用String）
   final String name;
   final String artists;
   final String album;
@@ -26,7 +26,7 @@ class Track {
   /// 从 JSON 创建 Track 对象
   factory Track.fromJson(Map<String, dynamic> json, {MusicSource? source}) {
     return Track(
-      id: json['id'] as int,
+      id: json['id'],  // 可以是 int 或 String
       name: json['name'] as String,
       artists: json['artists'] as String,
       album: json['album'] as String,

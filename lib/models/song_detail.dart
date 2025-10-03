@@ -2,7 +2,7 @@ import 'track.dart';
 
 /// 歌曲详情模型
 class SongDetail {
-  final int id;
+  final dynamic id; // 支持 int 和 String（网易云用int，QQ和酷狗用String）
   final String name;
   final String pic;
   final String arName; // 艺术家名称
@@ -31,7 +31,7 @@ class SongDetail {
   /// 从 JSON 创建 SongDetail 对象
   factory SongDetail.fromJson(Map<String, dynamic> json, {MusicSource? source}) {
     return SongDetail(
-      id: json['id'] as int? ?? 0,
+      id: json['id'] ?? 0, // 支持 int 和 String
       name: json['name'] as String? ?? '',
       pic: json['pic'] as String? ?? '',
       arName: json['ar_name'] as String? ?? '',

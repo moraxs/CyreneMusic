@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/player_service.dart';
 import '../pages/player_page.dart';
 
@@ -24,11 +25,26 @@ class MiniPlayer extends StatelessWidget {
 
         return GestureDetector(
           onTap: () {
-            // 点击打开全屏播放器（全屏对话框形式）
+            // 点击打开全屏播放器（从底部滑出）
             Navigator.of(context).push(
-              MaterialPageRoute(
-                fullscreenDialog: true,
-                builder: (context) => const PlayerPage(),
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const PlayerPage(),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  // 从底部向上滑出
+                  const begin = Offset(0.0, 1.0);  // 从底部开始
+                  const end = Offset.zero;          // 到达正常位置
+                  const curve = Curves.easeOutCubic;
+
+                  var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                  var offsetAnimation = animation.drive(tween);
+
+                  return SlideTransition(
+                    position: offsetAnimation,
+                    child: child,
+                  );
+                },
+                transitionDuration: const Duration(milliseconds: 300),
+                reverseTransitionDuration: const Duration(milliseconds: 250),
               ),
             );
           },
@@ -99,22 +115,32 @@ class MiniPlayer extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: imageUrl.isNotEmpty
-          ? Image.network(
-              imageUrl,
+          ? CachedNetworkImage(
+              imageUrl: imageUrl,
               width: 48,
               height: 48,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 48,
-                  height: 48,
-                  color: colorScheme.surfaceContainerHighest,
-                  child: Icon(
-                    Icons.music_note,
-                    color: colorScheme.onSurfaceVariant,
+              placeholder: (context, url) => Container(
+                width: 48,
+                height: 48,
+                color: colorScheme.surfaceContainerHighest,
+                child: const Center(
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                );
-              },
+                ),
+              ),
+              errorWidget: (context, url, error) => Container(
+                width: 48,
+                height: 48,
+                color: colorScheme.surfaceContainerHighest,
+                child: Icon(
+                  Icons.music_note,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
             )
           : Container(
               width: 48,

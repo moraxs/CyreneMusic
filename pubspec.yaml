@@ -63,6 +63,12 @@ dependencies:
   
   # File picker for directory selection
   file_picker: ^8.0.0
+  
+  # HTTP server for local proxy
+  shelf: ^1.4.0
+  
+  # Cached network image for better performance
+  cached_network_image: ^3.3.0
 
 dev_dependencies:
   flutter_test:

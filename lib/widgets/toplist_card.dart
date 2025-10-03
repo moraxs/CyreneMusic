@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/toplist.dart';
 
 /// 榜单卡片组件
@@ -30,19 +31,27 @@ class ToplistCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(
-                    toplist.coverImgUrl,
+                  CachedNetworkImage(
+                    imageUrl: toplist.coverImgUrl,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Icon(
-                          Icons.music_note,
-                          size: 64,
-                          color: colorScheme.onSurfaceVariant,
+                    placeholder: (context, url) => Container(
+                      color: colorScheme.surfaceContainerHighest,
+                      child: const Center(
+                        child: SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                      );
-                    },
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      color: colorScheme.surfaceContainerHighest,
+                      child: Icon(
+                        Icons.music_note,
+                        size: 64,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                   // 渐变遮罩
                   Positioned(

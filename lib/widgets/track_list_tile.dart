@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
 import '../services/player_service.dart';
 
@@ -43,22 +44,32 @@ class TrackListTile extends StatelessWidget {
           // 封面
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
-            child: Image.network(
-              track.picUrl,
+            child: CachedNetworkImage(
+              imageUrl: track.picUrl,
               width: 50,
               height: 50,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 50,
-                  height: 50,
-                  color: colorScheme.surfaceContainerHighest,
-                  child: Icon(
-                    Icons.music_note,
-                    color: colorScheme.onSurfaceVariant,
+              placeholder: (context, url) => Container(
+                width: 50,
+                height: 50,
+                color: colorScheme.surfaceContainerHighest,
+                child: const Center(
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                );
-              },
+                ),
+              ),
+              errorWidget: (context, url, error) => Container(
+                width: 50,
+                height: 50,
+                color: colorScheme.surfaceContainerHighest,
+                child: Icon(
+                  Icons.music_note,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ),
         ],

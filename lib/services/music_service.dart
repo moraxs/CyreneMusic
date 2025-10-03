@@ -186,39 +186,84 @@ class MusicService extends ChangeNotifier {
 
   /// 获取歌曲详情
   Future<SongDetail?> fetchSongDetail({
-    required int songId,
+    required dynamic songId, // 支持 int 和 String
     AudioQuality quality = AudioQuality.exhigh,
     MusicSource source = MusicSource.netease,
   }) async {
     try {
-      print('🎵 [MusicService] 获取歌曲详情: $songId, 音质: ${quality.displayName}');
-      DeveloperModeService().addLog('🎵 [MusicService] 获取歌曲详情: $songId');
+      print('🎵 [MusicService] 获取歌曲详情: $songId (${source.name}), 音质: ${quality.displayName}');
+      DeveloperModeService().addLog('🎵 [MusicService] 获取歌曲详情: $songId (${source.name})');
 
       final baseUrl = UrlService().baseUrl;
-      final url = '$baseUrl/song';
+      String url;
+      http.Response response;
       
-      final requestBody = {
-        'ids': songId.toString(),
-        'level': quality.value,
-        'type': 'json',
-      };
+      switch (source) {
+        case MusicSource.netease:
+          // 网易云音乐
+          url = '$baseUrl/song';
+          final requestBody = {
+            'ids': songId.toString(),
+            'level': quality.value,
+            'type': 'json',
+          };
 
-      DeveloperModeService().addLog('🌐 [Network] POST $url');
-      DeveloperModeService().addLog('📤 [Network] 请求体: ${requestBody.toString()}');
+          DeveloperModeService().addLog('🌐 [Network] POST $url');
+          DeveloperModeService().addLog('📤 [Network] 请求体: ${requestBody.toString()}');
 
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: requestBody,
-      ).timeout(
-        const Duration(seconds: 15),
-        onTimeout: () {
-          DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
-          throw Exception('请求超时');
-        },
-      );
+          response = await http.post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: requestBody,
+          ).timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
+              throw Exception('请求超时');
+            },
+          );
+          break;
+
+        case MusicSource.qq:
+          // QQ音乐
+          url = '$baseUrl/qq/song?ids=$songId';
+          DeveloperModeService().addLog('🌐 [Network] GET $url');
+
+          response = await http.get(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ).timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
+              throw Exception('请求超时');
+            },
+          );
+          break;
+
+        case MusicSource.kugou:
+          // 酷狗音乐
+          url = '$baseUrl/kugou/song?emixsongid=$songId';
+          DeveloperModeService().addLog('🌐 [Network] GET $url');
+
+          response = await http.get(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ).timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              DeveloperModeService().addLog('⏱️ [Network] 请求超时 (15s)');
+              throw Exception('请求超时');
+            },
+          );
+          break;
+      }
 
       print('🎵 [MusicService] 歌曲详情响应状态码: ${response.statusCode}');
       DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
@@ -233,7 +278,72 @@ class MusicService extends ChangeNotifier {
         final data = json.decode(responseBody) as Map<String, dynamic>;
 
         if (data['status'] == 200) {
-          final songDetail = SongDetail.fromJson(data, source: source);
+          SongDetail songDetail;
+          
+          if (source == MusicSource.qq) {
+            // QQ音乐返回格式特殊处理
+            final song = data['song'] as Map<String, dynamic>;
+            final lyricData = data['lyric'] as Map<String, dynamic>?;
+            final musicUrls = data['music_urls'] as Map<String, dynamic>?;
+            
+            // 选择音质（优先级：flac > 320 > 128）
+            String playUrl = '';
+            String bitrate = '';
+            if (musicUrls != null) {
+              if (musicUrls['flac'] != null) {
+                playUrl = musicUrls['flac']['url'] ?? '';
+                bitrate = musicUrls['flac']['bitrate'] ?? 'FLAC';
+              } else if (musicUrls['320'] != null) {
+                playUrl = musicUrls['320']['url'] ?? '';
+                bitrate = musicUrls['320']['bitrate'] ?? '320kbps';
+              } else if (musicUrls['128'] != null) {
+                playUrl = musicUrls['128']['url'] ?? '';
+                bitrate = musicUrls['128']['bitrate'] ?? '128kbps';
+              }
+            }
+            
+            songDetail = SongDetail(
+              id: song['mid'] ?? song['id'] ?? songId,
+              name: song['name'] ?? '',
+              pic: song['pic'] ?? '',
+              arName: song['singer'] ?? '',
+              alName: song['album'] ?? '',
+              level: bitrate,
+              size: '0', // QQ音乐不返回文件大小
+              url: playUrl,
+              lyric: lyricData?['lyric'] ?? '',
+              tlyric: lyricData?['tylyric'] ?? '',
+              source: source,
+            );
+          } else if (source == MusicSource.kugou) {
+            // 酷狗音乐返回格式
+            final song = data['song'] as Map<String, dynamic>?;
+            if (song == null) {
+              print('❌ [MusicService] 酷狗音乐返回数据格式错误');
+              return null;
+            }
+            
+            // 处理 bitrate（可能是 int 或 String）
+            final bitrateValue = song['bitrate'];
+            final bitrate = bitrateValue != null ? '${bitrateValue}kbps' : '未知';
+            
+            songDetail = SongDetail(
+              id: songId, // 使用传入的 emixsongid
+              name: song['name'] ?? '',
+              pic: song['pic'] ?? '',
+              arName: song['singer'] ?? '',
+              alName: song['album'] ?? '',
+              level: bitrate,
+              size: song['duration']?.toString() ?? '0', // 使用 duration 字段
+              url: song['url'] ?? '',
+              lyric: song['lyric'] ?? '',
+              tlyric: '', // 酷狗音乐没有翻译歌词
+              source: source,
+            );
+          } else {
+            // 网易云音乐（原有格式）
+            songDetail = SongDetail.fromJson(data, source: source);
+          }
           
           print('✅ [MusicService] 成功获取歌曲详情: ${songDetail.name}');
           print('   🎵 艺术家: ${songDetail.arName}');

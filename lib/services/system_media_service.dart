@@ -17,7 +17,7 @@ class SystemMediaService {
   bool _isDisposed = false; // 是否已释放
   
   // 缓存上次更新的信息，避免重复更新
-  int? _lastSongId;
+  int? _lastSongId;  // 使用 hashCode 作为唯一标识
   PlayerState? _lastPlayerState;
 
   /// 初始化系统媒体控件
@@ -154,12 +154,14 @@ class SystemMediaService {
     }
   }
   
-  /// 获取当前歌曲的唯一 ID
+  /// 获取当前歌曲的唯一 ID（使用 hashCode 统一处理 int 和 String）
   int? _getCurrentSongId(dynamic song, dynamic track) {
     if (song != null) {
+      // song.id 可能是 int 或 String，使用 hashCode 统一处理
       return song.id?.hashCode ?? song.name.hashCode;
     } else if (track != null) {
-      return track.id;
+      // track.id 可能是 int 或 String，使用 hashCode 统一处理
+      return track.id?.hashCode ?? track.name.hashCode;
     }
     return null;
   }
