@@ -61,11 +61,11 @@ class SystemMediaService {
         ),
         config: const SMTCConfig(
           fastForwardEnabled: false,
-          nextEnabled: false,
+          nextEnabled: true,        // 启用下一首
           pauseEnabled: true,
           playEnabled: true,
           rewindEnabled: false,
-          prevEnabled: false,
+          prevEnabled: true,         // 启用上一首
           stopEnabled: true,
         ),
       );
@@ -119,11 +119,11 @@ class SystemMediaService {
         break;
       case PressedButton.next:
         print('⏭️ [SystemMediaService] 系统媒体控件: 下一曲');
-        // TODO: 实现下一曲
+        player.playNext();
         break;
       case PressedButton.previous:
         print('⏮️ [SystemMediaService] 系统媒体控件: 上一曲');
-        // TODO: 实现上一曲
+        player.playPrevious();
         break;
       default:
         break;
@@ -172,6 +172,24 @@ class SystemMediaService {
       final currentSongId = _getCurrentSongId(song, track);
       final currentState = player.state;
       
+      // 检查 SMTC 是否需要重新启用（在歌曲切换或状态改变时）
+      final shouldEnableSmtc = _lastSongId == null && 
+                               currentSongId != null && 
+                               currentState != PlayerState.idle &&
+                               currentState != PlayerState.error;
+      
+      if (shouldEnableSmtc) {
+        print('▶️ [SystemMediaService] 重新启用 SMTC');
+        try {
+          _smtcWindows!.enableSmtc();
+        } catch (e) {
+          // 忽略 SharedMemory 错误
+          if (!e.toString().contains('SharedMemory')) {
+            print('⚠️ [SystemMediaService] 启用 SMTC 失败: $e');
+          }
+        }
+      }
+      
       // 1. 检查是否是新歌曲，只在歌曲切换时更新元数据
       final isSongChanged = currentSongId != _lastSongId && currentSongId != null;
       if (isSongChanged) {
@@ -197,17 +215,18 @@ class SystemMediaService {
         
         _lastPlayerState = currentState;
         
-        // 如果是停止状态，禁用 SMTC
-        if (status == PlaybackStatus.stopped) {
+        // 如果是停止或空闲状态，禁用 SMTC
+        if (status == PlaybackStatus.stopped && currentState == PlayerState.idle) {
           print('⏹️ [SystemMediaService] 停止播放，禁用 SMTC');
-          _smtcWindows!.disableSmtc();
+          try {
+            _smtcWindows!.disableSmtc();
+          } catch (e) {
+            // 忽略错误
+            if (!e.toString().contains('SharedMemory')) {
+              print('⚠️ [SystemMediaService] 禁用 SMTC 失败: $e');
+            }
+          }
           _lastSongId = null; // 清除缓存，下次播放时重新更新元数据
-        } else if (_lastSongId == null && currentSongId != null) {
-          // 如果 SMTC 被禁用后重新播放，需要重新启用并更新元数据
-          print('▶️ [SystemMediaService] 重新启用 SMTC');
-          _smtcWindows!.enableSmtc();
-          _updateMetadata(song, track);
-          _lastSongId = currentSongId;
         }
       }
       

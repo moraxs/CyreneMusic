@@ -36,6 +36,11 @@ import {
   getUserStats,
   deleteUser
 } from "./lib/adminController";
+import {
+  addFavorite,
+  getFavorites,
+  removeFavorite
+} from "./lib/favoriteController";
 
 const host = "0.0.0.0";
 const port = 4055;
@@ -493,6 +498,25 @@ const app = new Elysia()
     })
   })
 
+  // ================= 收藏接口 =================
+  // 添加收藏
+  .post("/favorites", addFavorite, {
+    body: t.Object({
+      trackId: t.String(),
+      name: t.String(),
+      artists: t.String(),
+      album: t.String(),
+      picUrl: t.String(),
+      source: t.String()
+    })
+  })
+
+  // 获取收藏列表
+  .get("/favorites", getFavorites)
+
+  // 删除收藏
+  .delete("/favorites/:trackId/:source", removeFavorite)
+
   // ================= 管理员接口 =================
   // 管理员登录
   .post("/admin/login", adminLogin, {
@@ -546,6 +570,11 @@ const app = new Elysia()
     logger.info("  - POST /auth/reset-password/send-code (Send Reset Code)");
     logger.info("  - POST /auth/reset-password (Reset Password)");
     logger.info("  - POST /auth/update-location (Update User IP Location)");
+    logger.info("");
+    logger.info("  === Favorites ===");
+    logger.info("  - POST /favorites (Add Favorite)");
+    logger.info("  - GET /favorites (Get Favorites)");
+    logger.info("  - DELETE /favorites/:trackId/:source (Remove Favorite)");
     logger.info("");
     logger.info("  === Admin Panel ===");
     logger.info("  - POST /admin/login (Admin Login)");

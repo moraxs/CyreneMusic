@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import '../services/location_service.dart';
 import '../services/layout_preference_service.dart';
 import '../services/cache_service.dart';
+import '../services/download_service.dart';
 import '../pages/auth/login_page.dart';
 
 /// 设置页面
@@ -40,6 +41,8 @@ class _SettingsPageState extends State<SettingsPage> {
     LayoutPreferenceService().addListener(_onLayoutPreferenceChanged);
     // 监听缓存服务变化
     CacheService().addListener(_onCacheChanged);
+    // 监听下载服务变化
+    DownloadService().addListener(_onDownloadChanged);
     
     // 如果已登录，获取 IP 归属地
     final isLoggedIn = AuthService().isLoggedIn;
@@ -61,6 +64,7 @@ class _SettingsPageState extends State<SettingsPage> {
     LocationService().removeListener(_onLocationChanged);
     LayoutPreferenceService().removeListener(_onLayoutPreferenceChanged);
     CacheService().removeListener(_onCacheChanged);
+    DownloadService().removeListener(_onDownloadChanged);
     super.dispose();
   }
 
@@ -104,6 +108,12 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _onCacheChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onDownloadChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -249,6 +259,16 @@ class _SettingsPageState extends State<SettingsPage> {
                     icon: Icons.storage,
                     onTap: () => _showCacheManagement(),
                   ),
+                  // Windows 平台显示下载目录设置
+                  if (Platform.isWindows) ...[
+                    const Divider(height: 1),
+                    _buildListTile(
+                      title: '下载目录',
+                      subtitle: _getDownloadDirSubtitle(),
+                      icon: Icons.download,
+                      onTap: () => _showDownloadDirSettings(),
+                    ),
+                  ],
                 ]),
                 
                 const SizedBox(height: 24),
@@ -1262,6 +1282,15 @@ class _SettingsPageState extends State<SettingsPage> {
     return '默认位置';
   }
 
+  /// 获取下载目录副标题
+  String _getDownloadDirSubtitle() {
+    final downloadPath = DownloadService().downloadPath;
+    if (downloadPath != null && downloadPath.isNotEmpty) {
+      return downloadPath;
+    }
+    return '未设置';
+  }
+
   /// 显示缓存管理
   Future<void> _showCacheManagement() async {
     final stats = await CacheService().getCacheStats();
@@ -1695,6 +1724,132 @@ class _SettingsPageState extends State<SettingsPage> {
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
             child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示下载目录设置
+  Future<void> _showDownloadDirSettings() async {
+    final currentDownloadPath = DownloadService().downloadPath;
+    final dirController = TextEditingController(text: currentDownloadPath ?? '');
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('下载目录设置'),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '当前下载目录：',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                currentDownloadPath ?? '未设置',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: dirController,
+                decoration: const InputDecoration(
+                  labelText: '新下载目录',
+                  border: OutlineInputBorder(),
+                  hintText: '例如: D:\\Music\\Cyrene',
+                ),
+                readOnly: true,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final result = await FilePicker.platform.getDirectoryPath(
+                          dialogTitle: '选择下载目录',
+                        );
+
+                        if (result != null) {
+                          dirController.text = result;
+                        }
+                      },
+                      icon: const Icon(Icons.folder_open),
+                      label: const Text('浏览'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.onSecondaryContainer,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '下载的音乐文件将保存到指定目录',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSecondaryContainer,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final newDir = dirController.text.trim();
+
+              if (newDir.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('请选择下载目录')),
+                );
+                return;
+              }
+
+              // 设置新的下载目录
+              final success = await DownloadService().setDownloadPath(newDir);
+
+              if (mounted) {
+                Navigator.pop(context);
+                if (success) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('下载目录已更新')),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('设置下载目录失败')),
+                  );
+                }
+              }
+            },
+            child: const Text('保存'),
           ),
         ],
       ),
