@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart' as ap;
 import '../models/song_detail.dart';
 import '../models/track.dart';
 import 'music_service.dart';
+import 'cache_service.dart';
 
 /// 播放状态枚举
 enum PlayerState {
@@ -27,6 +29,7 @@ class PlayerService extends ChangeNotifier {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   String? _errorMessage;
+  String? _currentTempFilePath;  // 记录当前临时文件路径
 
   PlayerState get state => _state;
   SongDetail? get currentSong => _currentSong;
@@ -80,6 +83,9 @@ class PlayerService extends ChangeNotifier {
   /// 播放歌曲（通过Track对象）
   Future<void> playTrack(Track track, {AudioQuality quality = AudioQuality.exhigh}) async {
     try {
+      // 清理上一首歌的临时文件
+      await _cleanupCurrentTempFile();
+      
       _state = PlayerState.loading;
       _currentTrack = track;
       _errorMessage = null;
@@ -87,7 +93,47 @@ class PlayerService extends ChangeNotifier {
 
       print('🎵 [PlayerService] 开始播放: ${track.name} - ${track.artists}');
 
-      // 获取歌曲详情
+      // 1. 检查缓存
+      final qualityStr = quality.toString().split('.').last;
+      final isCached = CacheService().isCached(track);
+
+      if (isCached) {
+        print('💾 [PlayerService] 使用缓存播放');
+        
+        // 获取缓存的元数据
+        final metadata = CacheService().getCachedMetadata(track);
+        final cachedFilePath = await CacheService().getCachedFilePath(track);
+
+        if (cachedFilePath != null && metadata != null) {
+          // 记录临时文件路径（用于后续清理）
+          _currentTempFilePath = cachedFilePath;
+          
+          _currentSong = SongDetail(
+            id: track.id,
+            name: track.name,
+            url: cachedFilePath,
+            pic: metadata.picUrl,
+            arName: metadata.artists,
+            alName: metadata.album,
+            level: metadata.quality,
+            size: metadata.fileSize.toString(),
+            lyric: metadata.lyric,      // 从缓存恢复歌词
+            tlyric: metadata.tlyric,    // 从缓存恢复翻译
+            source: track.source,
+          );
+
+          // 播放缓存文件
+          await _audioPlayer.play(ap.DeviceFileSource(cachedFilePath));
+          print('✅ [PlayerService] 从缓存播放: $cachedFilePath');
+          print('📝 [PlayerService] 歌词已从缓存恢复');
+          return;
+        } else {
+          print('⚠️ [PlayerService] 缓存文件无效，从网络获取');
+        }
+      }
+
+      // 2. 从网络获取歌曲详情
+      print('🌐 [PlayerService] 从网络获取歌曲');
       final songDetail = await MusicService().fetchSongDetail(
         songId: track.id,
         quality: quality,
@@ -104,15 +150,35 @@ class PlayerService extends ChangeNotifier {
 
       _currentSong = songDetail;
 
-      // 播放音乐
+      // 3. 播放音乐
       await _audioPlayer.play(ap.UrlSource(songDetail.url));
-
       print('✅ [PlayerService] 开始播放: ${songDetail.url}');
+
+      // 4. 异步缓存歌曲（不阻塞播放）
+      if (!isCached) {
+        _cacheSongInBackground(track, songDetail, qualityStr);
+      }
     } catch (e) {
       _state = PlayerState.error;
       _errorMessage = '播放失败: $e';
       print('❌ [PlayerService] 播放异常: $e');
       notifyListeners();
+    }
+  }
+
+  /// 后台缓存歌曲
+  Future<void> _cacheSongInBackground(
+    Track track,
+    SongDetail songDetail,
+    String quality,
+  ) async {
+    try {
+      print('💾 [PlayerService] 开始后台缓存: ${track.name}');
+      await CacheService().cacheSong(track, songDetail, quality);
+      print('✅ [PlayerService] 缓存完成: ${track.name}');
+    } catch (e) {
+      print('⚠️ [PlayerService] 缓存失败: $e');
+      // 缓存失败不影响播放
     }
   }
 
@@ -140,6 +206,10 @@ class PlayerService extends ChangeNotifier {
   Future<void> stop() async {
     try {
       await _audioPlayer.stop();
+      
+      // 清理临时文件
+      await _cleanupCurrentTempFile();
+      
       _state = PlayerState.idle;
       _currentSong = null;
       _currentTrack = null;
@@ -181,10 +251,29 @@ class PlayerService extends ChangeNotifier {
     }
   }
 
+  /// 清理当前临时文件
+  Future<void> _cleanupCurrentTempFile() async {
+    if (_currentTempFilePath != null) {
+      try {
+        final tempFile = File(_currentTempFilePath!);
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+          print('🧹 [PlayerService] 已删除临时文件: $_currentTempFilePath');
+        }
+      } catch (e) {
+        print('⚠️ [PlayerService] 删除临时文件失败: $e');
+      } finally {
+        _currentTempFilePath = null;
+      }
+    }
+  }
+
   /// 清理资源
   @override
   void dispose() {
     print('🗑️ [PlayerService] 释放播放器资源...');
+    // 同步清理当前临时文件
+    _cleanupCurrentTempFile();
     _audioPlayer.stop();
     _audioPlayer.dispose();
     super.dispose();
@@ -194,6 +283,12 @@ class PlayerService extends ChangeNotifier {
   Future<void> forceDispose() async {
     try {
       print('🗑️ [PlayerService] 强制释放播放器资源...');
+      
+      // 清理当前播放的临时文件
+      await _cleanupCurrentTempFile();
+      
+      // 清理所有临时缓存文件
+      await CacheService().cleanTempFiles();
       
       // 先移除所有监听器，防止状态改变时触发通知
       print('🔌 [PlayerService] 移除所有监听器...');

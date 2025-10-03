@@ -38,6 +38,25 @@ try {
   // 字段已存在，忽略错误
 }
 
+// 添加 IP 归属地相关字段（如果不存在）
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN last_ip TEXT`);
+} catch (e) {
+  // 字段已存在，忽略错误
+}
+
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN last_ip_location TEXT`);
+} catch (e) {
+  // 字段已存在，忽略错误
+}
+
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN last_ip_updated_at DATETIME`);
+} catch (e) {
+  // 字段已存在，忽略错误
+}
+
 // 创建验证码表
 db.exec(`
   CREATE TABLE IF NOT EXISTS verification_codes (
@@ -71,6 +90,9 @@ export interface User {
   is_verified: number;
   verified_at: string | null;
   last_login: string | null;
+  last_ip: string | null;
+  last_ip_location: string | null;
+  last_ip_updated_at: string | null;
 }
 
 // 验证码类型
@@ -160,6 +182,19 @@ export const UserDB = {
       WHERE id = $userId
     `);
     stmt.run({ $avatarUrl: avatarUrl, $userId: userId });
+  },
+
+  // 更新用户 IP 归属地
+  updateIPLocation(userId: number, ip: string, location: string) {
+    const stmt = db.query(`
+      UPDATE users 
+      SET last_ip = $ip, 
+          last_ip_location = $location, 
+          last_ip_updated_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP 
+      WHERE id = $userId
+    `);
+    stmt.run({ $ip: ip, $location: location, $userId: userId });
   },
 };
 

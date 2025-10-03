@@ -8,6 +8,7 @@ import 'services/player_service.dart';
 import 'services/system_media_service.dart';
 import 'services/tray_service.dart';
 import 'services/developer_mode_service.dart';
+import 'services/cache_service.dart';
 
 // 条件导入 SMTC
 import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
@@ -51,6 +52,10 @@ void main() async {
     await SMTCWindows.initialize();
     DeveloperModeService().addLog('🎮 SMTC 已初始化');
   }
+  
+  // 初始化缓存服务
+  await CacheService().initialize();
+  DeveloperModeService().addLog('💾 缓存服务已初始化');
   
   PlayerService().initialize();
   DeveloperModeService().addLog('🎵 播放器服务已初始化');

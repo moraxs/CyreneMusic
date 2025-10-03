@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'url_service.dart';
 import 'developer_mode_service.dart';
+import 'location_service.dart';
 
 /// 用户信息模型
 class User {
@@ -362,5 +363,77 @@ class AuthService extends ChangeNotifier {
     DeveloperModeService().addLog('👋 [AuthService] 用户退出登录: $username');
     
     notifyListeners();
+  }
+
+  /// 更新用户IP归属地
+  Future<Map<String, dynamic>> updateLocation() async {
+    // 检查用户是否已登录
+    if (!_isLoggedIn || _currentUser == null) {
+      DeveloperModeService().addLog('⚠️ [AuthService] 用户未登录，无法更新IP归属地');
+      return {
+        'success': false,
+        'message': '用户未登录',
+      };
+    }
+
+    try {
+      // 获取IP归属地信息
+      DeveloperModeService().addLog('🌍 [AuthService] 开始获取IP归属地...');
+      final locationInfo = await LocationService().fetchLocation();
+      
+      if (locationInfo == null) {
+        DeveloperModeService().addLog('❌ [AuthService] 获取IP归属地失败');
+        return {
+          'success': false,
+          'message': '获取IP归属地失败',
+        };
+      }
+
+      // 准备发送到后端的数据
+      final url = '${UrlService().baseUrl}/auth/update-location';
+      final requestBody = {
+        'userId': _currentUser!.id,
+        'ip': locationInfo.ip,
+        'location': locationInfo.shortDescription,
+      };
+
+      DeveloperModeService().addLog('🌐 [Network] POST $url');
+      DeveloperModeService().addLog('📤 [Network] 请求体: ${jsonEncode(requestBody)}');
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+
+      DeveloperModeService().addLog('📥 [Network] 状态码: ${response.statusCode}');
+      DeveloperModeService().addLog('📄 [Network] 响应体: ${response.body}');
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        DeveloperModeService().addLog('✅ [AuthService] IP归属地更新成功: ${locationInfo.shortDescription}');
+        return {
+          'success': true,
+          'message': data['message'],
+          'data': {
+            'ip': locationInfo.ip,
+            'location': locationInfo.shortDescription,
+          },
+        };
+      } else {
+        DeveloperModeService().addLog('❌ [AuthService] IP归属地更新失败');
+        return {
+          'success': false,
+          'message': data['message'] ?? '更新IP归属地失败',
+        };
+      }
+    } catch (e) {
+      DeveloperModeService().addLog('❌ [AuthService] 更新IP归属地异常: $e');
+      return {
+        'success': false,
+        'message': '网络错误: ${e.toString()}',
+      };
+    }
   }
 }

@@ -57,6 +57,12 @@ dependencies:
   
   # Color extraction from images
   palette_generator: ^0.3.3
+  
+  # Cryptography for cache encryption
+  crypto: ^3.0.3
+  
+  # File picker for directory selection
+  file_picker: ^8.0.0
 
 dev_dependencies:
   flutter_test:

@@ -4,6 +4,10 @@
     "url": "http://47.104.188.206:4056"
   },
   "log_level": "DEV",
+  "admin": {
+    "password": "morax2237",
+    "session_duration": 3600
+  },
   "EMAIL": {
     "host": "smtp.qiye.aliyun.com",
     "port": 465,

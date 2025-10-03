@@ -26,8 +26,16 @@ import {
   register,
   login,
   sendResetCode,
-  resetPassword
+  resetPassword,
+  updateUserLocation
 } from "./lib/authController";
+import {
+  adminLogin,
+  adminLogout,
+  getAllUsers,
+  getUserStats,
+  deleteUser
+} from "./lib/adminController";
 
 const host = "0.0.0.0";
 const port = 4055;
@@ -476,6 +484,39 @@ const app = new Elysia()
     })
   })
 
+  // 更新用户 IP 归属地
+  .post("/auth/update-location", updateUserLocation, {
+    body: t.Object({
+      userId: t.Number(),
+      ip: t.String(),
+      location: t.String()
+    })
+  })
+
+  // ================= 管理员接口 =================
+  // 管理员登录
+  .post("/admin/login", adminLogin, {
+    body: t.Object({
+      password: t.String()
+    })
+  })
+
+  // 管理员登出
+  .post("/admin/logout", adminLogout)
+
+  // 获取所有用户列表（需要管理员权限）
+  .get("/admin/users", getAllUsers)
+
+  // 获取用户统计数据（需要管理员权限）
+  .get("/admin/stats", getUserStats)
+
+  // 删除用户（需要管理员权限）
+  .delete("/admin/users", deleteUser, {
+    body: t.Object({
+      userId: t.Number()
+    })
+  })
+
   .listen(port, ({ hostname, port }) => {
     console.log(`Server running at http://${host}:${port}`);
     logger.info("  - POST /search (Netease)");
@@ -504,6 +545,14 @@ const app = new Elysia()
     logger.info("  - POST /auth/login (Login)");
     logger.info("  - POST /auth/reset-password/send-code (Send Reset Code)");
     logger.info("  - POST /auth/reset-password (Reset Password)");
+    logger.info("  - POST /auth/update-location (Update User IP Location)");
+    logger.info("");
+    logger.info("  === Admin Panel ===");
+    logger.info("  - POST /admin/login (Admin Login)");
+    logger.info("  - POST /admin/logout (Admin Logout)");
+    logger.info("  - GET /admin/users (Get All Users)");
+    logger.info("  - GET /admin/stats (Get User Statistics)");
+    logger.info("  - DELETE /admin/users (Delete User)");
   });
 
 // 启动时执行原有任务

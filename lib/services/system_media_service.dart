@@ -76,8 +76,15 @@ class SystemMediaService {
       });
 
       // 启用 SMTC
-      _smtcWindows!.enableSmtc();
-      _smtcWindows!.setPlaybackStatus(PlaybackStatus.stopped);
+      try {
+        _smtcWindows!.enableSmtc();
+        _smtcWindows!.setPlaybackStatus(PlaybackStatus.stopped);
+      } catch (e) {
+        // 忽略初始化时的 SharedMemory 错误
+        if (!e.toString().contains('SharedMemory')) {
+          throw e;
+        }
+      }
       
       print('✅ [SystemMediaService] Windows SMTC 初始化成功');
     } catch (e) {
@@ -176,7 +183,16 @@ class SystemMediaService {
       if (isStateChanged) {
         final status = _getPlaybackStatus(currentState);
         print('🎮 [SystemMediaService] 状态改变: ${currentState.name} -> ${status.name}');
-        _smtcWindows!.setPlaybackStatus(status);
+        
+        try {
+          _smtcWindows!.setPlaybackStatus(status);
+        } catch (e) {
+          // 忽略 SharedMemory 错误，不影响播放
+          if (!e.toString().contains('SharedMemory')) {
+            print('⚠️ [SystemMediaService] 更新状态失败: $e');
+          }
+        }
+        
         _lastPlayerState = currentState;
         
         // 如果是停止状态，禁用 SMTC
@@ -199,15 +215,23 @@ class SystemMediaService {
           player.duration.inMilliseconds > 0 &&
           (isSongChanged || isStateChanged)) {
         print('⏱️ [SystemMediaService] 更新播放进度');
-        _smtcWindows!.updateTimeline(
-          PlaybackTimeline(
-            startTimeMs: 0,
-            endTimeMs: player.duration.inMilliseconds,
-            positionMs: player.position.inMilliseconds,
-            minSeekTimeMs: 0,
-            maxSeekTimeMs: player.duration.inMilliseconds,
-          ),
-        );
+        
+        try {
+          _smtcWindows!.updateTimeline(
+            PlaybackTimeline(
+              startTimeMs: 0,
+              endTimeMs: player.duration.inMilliseconds,
+              positionMs: player.position.inMilliseconds,
+              minSeekTimeMs: 0,
+              maxSeekTimeMs: player.duration.inMilliseconds,
+            ),
+          );
+        } catch (e) {
+          // 忽略 SharedMemory 错误，不影响播放
+          if (!e.toString().contains('SharedMemory')) {
+            print('⚠️ [SystemMediaService] 更新进度失败: $e');
+          }
+        }
       }
     } catch (e) {
       print('❌ [SystemMediaService] 更新 Windows 媒体信息失败: $e');
