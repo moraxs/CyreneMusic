@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 
 /// 自定义标题栏组件 - 仅用于 Windows 平台
 class CustomTitleBar extends StatelessWidget {
@@ -77,7 +78,7 @@ class _WindowButtons extends StatelessWidget {
         ),
         _WindowButton(
           icon: Icons.close,
-          onPressed: () => appWindow.close(),
+          onPressed: () => windowManager.close(),
           colorScheme: colorScheme,
           isClose: true,
         ),

@@ -294,3 +294,47 @@ export async function resetPassword(ctx: Context) {
     return { code: 500, message: '密码重置失败，请稍后重试' };
   }
 }
+
+// 更新用户 IP 归属地
+export async function updateUserLocation(ctx: Context) {
+  const { userId, ip, location } = ctx.body as {
+    userId: number;
+    ip: string;
+    location: string;
+  };
+
+  // 验证输入
+  if (!userId || !ip || !location) {
+    ctx.set.status = 400;
+    return { code: 400, message: '用户ID、IP和归属地不能为空' };
+  }
+
+  try {
+    // 查找用户
+    const user = UserDB.findById(userId);
+    if (!user) {
+      ctx.set.status = 404;
+      return { code: 404, message: '用户不存在' };
+    }
+
+    // 更新 IP 归属地
+    UserDB.updateIPLocation(userId, ip, location);
+
+    logger.info(`[Auth] 更新用户 ${user.username} IP归属地: ${location} (${ip})`);
+
+    return {
+      code: 200,
+      message: 'IP归属地更新成功',
+      data: {
+        userId,
+        ip,
+        location,
+        updatedAt: new Date().toISOString()
+      }
+    };
+  } catch (error: any) {
+    logger.error(`[Auth] 更新IP归属地失败: ${error.message}`);
+    ctx.set.status = 500;
+    return { code: 500, message: '更新IP归属地失败，请稍后重试' };
+  }
+}

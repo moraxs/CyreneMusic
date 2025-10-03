@@ -1,22 +1,86 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import 'layouts/main_layout.dart';
 import 'utils/theme_manager.dart';
+import 'services/player_service.dart';
+import 'services/system_media_service.dart';
+import 'services/tray_service.dart';
+import 'services/developer_mode_service.dart';
+import 'services/cache_service.dart';
 
-void main() {
+// 条件导入 SMTC
+import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
+
+void main() async {
+  // 初始化播放器服务
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 添加应用启动日志
+  DeveloperModeService().addLog('🚀 应用启动');
+  DeveloperModeService().addLog('📱 平台: ${Platform.operatingSystem}');
+  
+  // 初始化 window_manager（必须在 runApp 之前）
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    await windowManager.ensureInitialized();
+    
+    WindowOptions windowOptions = const WindowOptions(
+      size: Size(1200, 800),
+      minimumSize: Size(360, 640),
+      center: true,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: false,
+      titleBarStyle: TitleBarStyle.hidden, // 隐藏系统标题栏，使用自定义标题栏
+      windowButtonVisibility: false,
+    );
+    
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.setTitle('Cyrene Music');
+      // 对于隐藏标题栏的窗口，确保以无边框模式运行，避免启动时不可见
+      await windowManager.setAsFrameless();
+      await windowManager.show();
+      await windowManager.focus();
+      // 设置关闭窗口时不退出应用（会触发 onWindowClose 回调）
+      await windowManager.setPreventClose(true);
+      print('✅ [Main] 窗口已显示，关闭按钮将最小化到托盘');
+    });
+  }
+  
+  // Windows 平台初始化 SMTC
+  if (Platform.isWindows) {
+    await SMTCWindows.initialize();
+    DeveloperModeService().addLog('🎮 SMTC 已初始化');
+  }
+  
+  // 初始化缓存服务
+  await CacheService().initialize();
+  DeveloperModeService().addLog('💾 缓存服务已初始化');
+  
+  await PlayerService().initialize();
+  DeveloperModeService().addLog('🎵 播放器服务已初始化');
+  
+  // 初始化系统媒体控件
+  await SystemMediaService().initialize();
+  DeveloperModeService().addLog('🎛️ 系统媒体服务已初始化');
+  
+  // 初始化系统托盘
+  await TrayService().initialize();
+  DeveloperModeService().addLog('📌 系统托盘已初始化');
+  
   runApp(const MyApp());
   
-  // Windows 平台初始化窗口设置
+  // Windows 平台初始化 bitsdojo_window 设置（与 window_manager 配合使用）
   if (Platform.isWindows) {
     doWhenWindowReady(() {
       const initialSize = Size(1200, 800);
-      const minSize = Size(800, 600);
+      const minSize = Size(360, 640);
       
       appWindow.minSize = minSize;
       appWindow.size = initialSize;
       appWindow.alignment = Alignment.center;
       appWindow.title = 'Cyrene Music';
+      // 备用保障：确保窗口在就绪后可见（与 window_manager 协同）
       appWindow.show();
     });
   }
@@ -81,9 +145,82 @@ class MyApp extends StatelessWidget {
         ),
       ),
       themeMode: ThemeManager().themeMode,
-      home: const MainLayout(),
+      home: Platform.isWindows
+          ? _WindowsRoundedContainer(child: const MainLayout())
+          : const MainLayout(),
         );
       },
+    );
+  }
+}
+
+/// Windows 圆角窗口容器
+class _WindowsRoundedContainer extends StatefulWidget {
+  final Widget child;
+  
+  const _WindowsRoundedContainer({required this.child});
+
+  @override
+  State<_WindowsRoundedContainer> createState() => _WindowsRoundedContainerState();
+}
+
+class _WindowsRoundedContainerState extends State<_WindowsRoundedContainer> with WindowListener {
+  bool _isMaximized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    _checkMaximizedState();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  Future<void> _checkMaximizedState() async {
+    final isMaximized = await windowManager.isMaximized();
+    if (mounted) {
+      setState(() {
+        _isMaximized = isMaximized;
+      });
+    }
+  }
+
+  @override
+  void onWindowMaximize() {
+    setState(() {
+      _isMaximized = true;
+    });
+  }
+
+  @override
+  void onWindowUnmaximize() {
+    setState(() {
+      _isMaximized = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    // 最大化时无边距和圆角，正常时有边距和圆角
+    return Padding(
+      padding: _isMaximized ? EdgeInsets.zero : const EdgeInsets.all(8.0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: _isMaximized ? BorderRadius.zero : BorderRadius.circular(12),
+          // 移除阴影效果
+        ),
+        child: ClipRRect(
+          borderRadius: _isMaximized ? BorderRadius.zero : BorderRadius.circular(12),
+          child: widget.child,
+        ),
+      ),
     );
   }
 }

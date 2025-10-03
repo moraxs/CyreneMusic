@@ -171,7 +171,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     keyboardType: TextInputType.number,
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
-                        return '请输入 QQ 号';
+                        return '请输入 QQ 邮箱';
                       }
                       // 验证是否为纯数字
                       if (!RegExp(r'^\d+$').hasMatch(value.trim())) {

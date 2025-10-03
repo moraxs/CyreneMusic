@@ -44,6 +44,18 @@ class _LoginPageState extends State<LoginPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(result['message'])),
         );
+        
+        // 登录成功后，自动上报IP归属地（异步执行，不阻塞界面）
+        AuthService().updateLocation().then((locationResult) {
+          if (locationResult['success']) {
+            print('✅ [LoginPage] IP归属地已更新: ${locationResult['data']?['location']}');
+          } else {
+            print('⚠️ [LoginPage] IP归属地更新失败: ${locationResult['message']}');
+          }
+        }).catchError((error) {
+          print('❌ [LoginPage] IP归属地更新异常: $error');
+        });
+        
         Navigator.pop(context, true); // 返回主页面
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

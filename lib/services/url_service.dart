@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 后端源类型
 enum BackendSourceType {
@@ -10,7 +11,9 @@ enum BackendSourceType {
 class UrlService extends ChangeNotifier {
   static final UrlService _instance = UrlService._internal();
   factory UrlService() => _instance;
-  UrlService._internal();
+  UrlService._internal() {
+    _loadSettings();
+  }
 
   /// 官方源地址
   static const String officialBaseUrl = 'http://127.0.0.1:4055';
@@ -20,6 +23,47 @@ class UrlService extends ChangeNotifier {
 
   /// 自定义源地址
   String _customBaseUrl = '';
+
+  /// 从本地存储加载设置
+  Future<void> _loadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // 加载源类型
+      final sourceTypeIndex = prefs.getInt('backend_source_type') ?? 0;
+      _sourceType = BackendSourceType.values[sourceTypeIndex];
+      
+      // 加载自定义源地址
+      _customBaseUrl = prefs.getString('custom_base_url') ?? '';
+      
+      print('🌐 [UrlService] 从本地加载配置: ${_sourceType.name}, 自定义源: $_customBaseUrl');
+      notifyListeners();
+    } catch (e) {
+      print('❌ [UrlService] 加载配置失败: $e');
+    }
+  }
+
+  /// 保存源类型到本地
+  Future<void> _saveSourceType() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('backend_source_type', _sourceType.index);
+      print('💾 [UrlService] 源类型已保存: ${_sourceType.name}');
+    } catch (e) {
+      print('❌ [UrlService] 保存源类型失败: $e');
+    }
+  }
+
+  /// 保存自定义源地址到本地
+  Future<void> _saveCustomBaseUrl() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('custom_base_url', _customBaseUrl);
+      print('💾 [UrlService] 自定义源已保存: $_customBaseUrl');
+    } catch (e) {
+      print('❌ [UrlService] 保存自定义源失败: $e');
+    }
+  }
 
   /// 获取当前源类型
   BackendSourceType get sourceType => _sourceType;
@@ -44,6 +88,7 @@ class UrlService extends ChangeNotifier {
   void setSourceType(BackendSourceType type) {
     if (_sourceType != type) {
       _sourceType = type;
+      _saveSourceType();
       notifyListeners();
     }
   }
@@ -57,6 +102,7 @@ class UrlService extends ChangeNotifier {
     
     if (_customBaseUrl != cleanUrl) {
       _customBaseUrl = cleanUrl;
+      _saveCustomBaseUrl();
       notifyListeners();
     }
   }

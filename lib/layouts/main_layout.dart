@@ -1,9 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../widgets/custom_title_bar.dart';
+import '../widgets/mini_player.dart';
 import '../pages/home_page.dart';
 import '../pages/settings_page.dart';
+import '../pages/developer_page.dart';
 import '../services/auth_service.dart';
+import '../services/layout_preference_service.dart';
+import '../services/developer_mode_service.dart';
+import '../utils/page_visibility_notifier.dart';
 import '../pages/auth/login_page.dart';
 
 /// 主布局 - 包含侧边导航栏和内容区域
@@ -19,27 +24,59 @@ class _MainLayoutState extends State<MainLayout> {
   bool _isRailExtended = false;
 
   // 页面列表
-  final List<Widget> _pages = const [
-    HomePage(),
-    SettingsPage(),
-  ];
+  List<Widget> get _pages {
+    final pages = <Widget>[
+      const HomePage(),
+      const SettingsPage(),
+    ];
+    
+    // 如果开发者模式启用，添加开发者页面
+    if (DeveloperModeService().isDeveloperMode) {
+      pages.add(const DeveloperPage());
+    }
+    
+    return pages;
+  }
 
   @override
   void initState() {
     super.initState();
     // 监听认证状态变化
     AuthService().addListener(_onAuthChanged);
+    // 监听布局偏好变化
+    LayoutPreferenceService().addListener(_onLayoutPreferenceChanged);
+    // 监听开发者模式变化
+    DeveloperModeService().addListener(_onDeveloperModeChanged);
   }
 
   @override
   void dispose() {
     AuthService().removeListener(_onAuthChanged);
+    LayoutPreferenceService().removeListener(_onLayoutPreferenceChanged);
+    DeveloperModeService().removeListener(_onDeveloperModeChanged);
     super.dispose();
   }
 
   void _onAuthChanged() {
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  void _onLayoutPreferenceChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onDeveloperModeChanged() {
+    if (mounted) {
+      setState(() {
+        // 如果当前选中的是开发者页面但模式被关闭，切换到首页
+        if (_selectedIndex >= 2 && !DeveloperModeService().isDeveloperMode) {
+          _selectedIndex = 0;
+        }
+      });
     }
   }
 
@@ -137,8 +174,23 @@ class _MainLayoutState extends State<MainLayout> {
   Widget build(BuildContext context) {
     // 根据平台选择不同的布局
     if (Platform.isAndroid) {
+      // Android 始终使用移动布局
       return _buildMobileLayout(context);
+    } else if (Platform.isWindows) {
+      // Windows 根据用户偏好选择布局，使用 AnimatedBuilder 确保更新
+      return AnimatedBuilder(
+        animation: LayoutPreferenceService(),
+        builder: (context, child) {
+          final isDesktop = LayoutPreferenceService().isDesktopLayout;
+          print('🖥️ [MainLayout] 当前布局模式: ${isDesktop ? "桌面模式" : "移动模式"}');
+          
+          return isDesktop
+              ? _buildDesktopLayout(context)
+              : _buildMobileLayout(context);
+        },
+      );
     } else {
+      // 其他桌面平台默认使用桌面布局
       return _buildDesktopLayout(context);
     }
   }
@@ -151,7 +203,8 @@ class _MainLayoutState extends State<MainLayout> {
       body: Column(
         children: [
           // Windows 平台显示自定义标题栏
-          const CustomTitleBar(),
+          if (Platform.isWindows)
+            const CustomTitleBar(),
           
           // 主要内容区域
           Expanded(
@@ -174,6 +227,9 @@ class _MainLayoutState extends State<MainLayout> {
               ],
             ),
           ),
+          
+          // 迷你播放器
+          const MiniPlayer(),
         ],
       ),
     );
@@ -182,25 +238,53 @@ class _MainLayoutState extends State<MainLayout> {
   /// 构建移动端布局（Android/iOS）
   Widget _buildMobileLayout(BuildContext context) {
     return Scaffold(
-      body: _pages[_selectedIndex],
+      body: Column(
+        children: [
+          // Windows 平台且使用移动布局时也显示自定义标题栏
+          if (Platform.isWindows)
+            const CustomTitleBar(),
+          
+          // 主要内容区域
+          Expanded(
+            child: _pages[_selectedIndex],
+          ),
+          
+          // 迷你播放器
+          const MiniPlayer(),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (int index) {
+          // 如果点击的是设置按钮，触发开发者模式检测
+          if (index == 1) {
+            DeveloperModeService().onSettingsClicked();
+          }
+          
           setState(() {
             _selectedIndex = index;
           });
+          // 通知页面切换
+          PageVisibilityNotifier().setCurrentPage(index);
         },
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: '首页',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),
             label: '设置',
           ),
+          // 开发者模式导航项（动态显示）
+          if (DeveloperModeService().isDeveloperMode)
+            const NavigationDestination(
+              icon: Icon(Icons.code),
+              selectedIcon: Icon(Icons.code),
+              label: 'Dev',
+            ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -219,9 +303,16 @@ class _MainLayoutState extends State<MainLayout> {
       backgroundColor: colorScheme.surface,
       selectedIndex: _selectedIndex,
       onDestinationSelected: (int index) {
+        // 如果点击的是设置按钮，触发开发者模式检测
+        if (index == 1) {
+          DeveloperModeService().onSettingsClicked();
+        }
+        
         setState(() {
           _selectedIndex = index;
         });
+        // 通知页面切换
+        PageVisibilityNotifier().setCurrentPage(index);
       },
       labelType: _isRailExtended 
           ? NavigationRailLabelType.none 
@@ -238,17 +329,24 @@ class _MainLayoutState extends State<MainLayout> {
           child: Icon(_isRailExtended ? Icons.menu_open : Icons.menu),
         ),
       ),
-      destinations: const [
-        NavigationRailDestination(
+      destinations: [
+        const NavigationRailDestination(
           icon: Icon(Icons.home_outlined),
           selectedIcon: Icon(Icons.home),
           label: Text('首页'),
         ),
-        NavigationRailDestination(
+        const NavigationRailDestination(
           icon: Icon(Icons.settings_outlined),
           selectedIcon: Icon(Icons.settings),
           label: Text('设置'),
         ),
+        // 开发者模式导航项（动态显示）
+        if (DeveloperModeService().isDeveloperMode)
+          const NavigationRailDestination(
+            icon: Icon(Icons.code),
+            selectedIcon: Icon(Icons.code),
+            label: Text('Dev'),
+          ),
       ],
       // 可以添加底部的额外按钮
       trailing: Expanded(
