@@ -517,6 +517,97 @@ class PlaylistService extends ChangeNotifier {
     }
   }
 
+  /// 批量删除歌曲
+  Future<int> removeTracksFromPlaylist(int playlistId, List<PlaylistTrack> tracks) async {
+    if (!AuthService().isLoggedIn) {
+      print('⚠️ [PlaylistService] 未登录，无法批量删除歌曲');
+      return 0;
+    }
+
+    if (tracks.isEmpty) {
+      print('⚠️ [PlaylistService] 歌曲列表为空');
+      return 0;
+    }
+
+    try {
+      final baseUrl = UrlService().baseUrl;
+      final userId = AuthService().currentUser?.id;
+      if (userId == null) {
+        throw Exception('无法获取用户ID');
+      }
+      final token = 'user_$userId';
+
+      // 构建删除列表
+      final tracksToDelete = tracks.map((track) => {
+        'trackId': track.trackId,
+        'source': track.source.toString().split('.').last,
+      }).toList();
+
+      print('🗑️ [PlaylistService] 准备批量删除 ${tracks.length} 首歌曲');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/playlists/$playlistId/tracks/batch-remove'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          'tracks': tracksToDelete,
+        }),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw Exception('请求超时'),
+      );
+
+      print('📥 [PlaylistService] 批量删除响应状态码: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+
+        if (data['status'] == 200) {
+          final deletedCount = data['deletedCount'] as int? ?? 0;
+
+          // 更新歌单的歌曲数量
+          final index = _playlists.indexWhere((p) => p.id == playlistId);
+          if (index != -1) {
+            _playlists[index] = Playlist(
+              id: _playlists[index].id,
+              name: _playlists[index].name,
+              isDefault: _playlists[index].isDefault,
+              trackCount: _playlists[index].trackCount - deletedCount,
+              createdAt: _playlists[index].createdAt,
+              updatedAt: DateTime.now(),
+            );
+          }
+
+          // 从当前列表批量删除
+          if (_currentPlaylistId == playlistId) {
+            for (var track in tracks) {
+              _currentTracks.removeWhere((t) => 
+                t.trackId == track.trackId && t.source == track.source
+              );
+            }
+          }
+
+          print('✅ [PlaylistService] 批量删除成功: $deletedCount 首');
+          notifyListeners();
+          return deletedCount;
+        } else {
+          throw Exception(data['message'] ?? '批量删除失败');
+        }
+      } else if (response.statusCode == 401) {
+        print('⚠️ [PlaylistService] 未授权，需要重新登录');
+        AuthService().logout();
+        return 0;
+      } else {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ [PlaylistService] 批量删除失败: $e');
+      return 0;
+    }
+  }
+
   /// 检查歌曲是否在指定歌单中
   bool isTrackInPlaylist(int playlistId, Track track) {
     if (_currentPlaylistId != playlistId) {

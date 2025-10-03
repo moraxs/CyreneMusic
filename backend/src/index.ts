@@ -48,7 +48,8 @@ import {
   deletePlaylist,
   addTrackToPlaylist,
   getPlaylistTracks,
-  removeTrackFromPlaylist
+  removeTrackFromPlaylist,
+  removeTracksFromPlaylist
 } from "./lib/playlistController";
 
 const host = "0.0.0.0";
@@ -645,6 +646,16 @@ const app = new Elysia()
       source: t.String()
     })
   })
+  
+  // 批量删除歌曲
+  .post("/playlists/:playlistId/tracks/batch-remove", removeTracksFromPlaylist, {
+    body: t.Object({
+      tracks: t.Array(t.Object({
+        trackId: t.String(),
+        source: t.String()
+      }))
+    })
+  })
 
   // ================= 管理员接口 =================
   // 管理员登录
@@ -718,6 +729,7 @@ const app = new Elysia()
     logger.info("  - POST /playlists/:playlistId/tracks (Add Track to Playlist)");
     logger.info("  - GET /playlists/:playlistId/tracks (Get Playlist Tracks)");
     logger.info("  - POST /playlists/:playlistId/tracks/remove (Remove Track from Playlist)");
+    logger.info("  - POST /playlists/:playlistId/tracks/batch-remove (Batch Remove Tracks)");
     logger.info("");
     logger.info("  === Admin Panel ===");
     logger.info("  - POST /admin/login (Admin Login)");

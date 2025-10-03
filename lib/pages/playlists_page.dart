@@ -20,6 +20,10 @@ class _PlaylistsPageState extends State<PlaylistsPage>
     with AutomaticKeepAliveClientMixin {
   final PlaylistService _playlistService = PlaylistService();
   Playlist? _selectedPlaylist; // 当前选中的歌单
+  
+  // 批量删除相关状态
+  bool _isEditMode = false; // 是否处于编辑模式
+  final Set<String> _selectedTrackIds = {}; // 选中的歌曲ID集合（trackId + source）
 
   @override
   bool get wantKeepAlive => true;
@@ -316,7 +320,108 @@ class _PlaylistsPageState extends State<PlaylistsPage>
   void _backToList() {
     setState(() {
       _selectedPlaylist = null;
+      _isEditMode = false;
+      _selectedTrackIds.clear();
     });
+  }
+
+  /// 生成歌曲唯一标识
+  String _getTrackKey(PlaylistTrack track) {
+    return '${track.trackId}_${track.source.toString().split('.').last}';
+  }
+
+  /// 切换编辑模式
+  void _toggleEditMode() {
+    setState(() {
+      _isEditMode = !_isEditMode;
+      if (!_isEditMode) {
+        _selectedTrackIds.clear();
+      }
+    });
+  }
+
+  /// 全选/取消全选
+  void _toggleSelectAll() {
+    setState(() {
+      if (_selectedTrackIds.length == _playlistService.currentTracks.length) {
+        // 当前全选，则取消全选
+        _selectedTrackIds.clear();
+      } else {
+        // 未全选，则全选
+        _selectedTrackIds.clear();
+        for (var track in _playlistService.currentTracks) {
+          _selectedTrackIds.add(_getTrackKey(track));
+        }
+      }
+    });
+  }
+
+  /// 切换单个歌曲的选中状态
+  void _toggleTrackSelection(PlaylistTrack track) {
+    setState(() {
+      final key = _getTrackKey(track);
+      if (_selectedTrackIds.contains(key)) {
+        _selectedTrackIds.remove(key);
+      } else {
+        _selectedTrackIds.add(key);
+      }
+    });
+  }
+
+  /// 批量删除选中的歌曲
+  Future<void> _batchRemoveTracks() async {
+    if (_selectedPlaylist == null || _selectedTrackIds.isEmpty) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('批量删除'),
+        content: Text('确定要删除选中的 ${_selectedTrackIds.length} 首歌曲吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // 获取要删除的歌曲列表
+    final tracksToDelete = _playlistService.currentTracks
+        .where((track) => _selectedTrackIds.contains(_getTrackKey(track)))
+        .toList();
+
+    // 调用批量删除
+    final deletedCount = await _playlistService.removeTracksFromPlaylist(
+      _selectedPlaylist!.id,
+      tracksToDelete,
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已删除 $deletedCount 首歌曲'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      // 退出编辑模式
+      setState(() {
+        _isEditMode = false;
+        _selectedTrackIds.clear();
+      });
+    }
   }
 
   /// 显示导入歌单对话框
@@ -580,6 +685,8 @@ class _PlaylistsPageState extends State<PlaylistsPage>
 
   /// 构建歌单详情顶部栏
   Widget _buildDetailAppBar(Playlist playlist, ColorScheme colorScheme) {
+    final tracks = _playlistService.currentTracks;
+    
     return SliverAppBar(
       floating: true,
       snap: true,
@@ -592,14 +699,14 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            playlist.name,
+            _isEditMode ? '已选择 ${_selectedTrackIds.length} 首' : playlist.name,
             style: TextStyle(
               color: colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
           ),
-          if (playlist.isDefault)
+          if (!_isEditMode && playlist.isDefault)
             Text(
               '默认歌单',
               style: TextStyle(
@@ -610,19 +717,51 @@ class _PlaylistsPageState extends State<PlaylistsPage>
         ],
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          onPressed: () {
-            _playlistService.loadPlaylistTracks(playlist.id);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('正在刷新...'),
-                duration: Duration(seconds: 1),
-              ),
-            );
-          },
-          tooltip: '刷新',
-        ),
+        if (_isEditMode) ...[
+          // 全选按钮
+          IconButton(
+            icon: Icon(
+              _selectedTrackIds.length == tracks.length
+                  ? Icons.check_box
+                  : Icons.check_box_outline_blank,
+            ),
+            onPressed: tracks.isNotEmpty ? _toggleSelectAll : null,
+            tooltip: _selectedTrackIds.length == tracks.length ? '取消全选' : '全选',
+          ),
+          // 批量删除按钮
+          IconButton(
+            icon: const Icon(Icons.delete, color: Colors.redAccent),
+            onPressed: _selectedTrackIds.isNotEmpty ? _batchRemoveTracks : null,
+            tooltip: '删除选中',
+          ),
+          // 取消按钮
+          TextButton(
+            onPressed: _toggleEditMode,
+            child: const Text('取消'),
+          ),
+        ] else ...[
+          // 编辑按钮
+          if (tracks.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: _toggleEditMode,
+              tooltip: '批量管理',
+            ),
+          // 刷新按钮
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              _playlistService.loadPlaylistTracks(playlist.id);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('正在刷新...'),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+            },
+            tooltip: '刷新',
+          ),
+        ],
       ],
     );
   }
@@ -662,65 +801,76 @@ class _PlaylistsPageState extends State<PlaylistsPage>
   /// 构建歌曲项
   Widget _buildTrackItem(
       PlaylistTrack item, int index, ColorScheme colorScheme) {
+    final trackKey = _getTrackKey(item);
+    final isSelected = _selectedTrackIds.contains(trackKey);
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
+      color: isSelected && _isEditMode 
+          ? colorScheme.primaryContainer.withOpacity(0.3) 
+          : null,
       child: ListTile(
-        leading: Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: CachedNetworkImage(
-                imageUrl: item.picUrl,
-                width: 50,
-                height: 50,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  width: 50,
-                  height: 50,
-                  color: colorScheme.surfaceContainerHighest,
-                  child: const Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+        leading: _isEditMode
+            ? Checkbox(
+                value: isSelected,
+                onChanged: (_) => _toggleTrackSelection(item),
+              )
+            : Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: CachedNetworkImage(
+                      imageUrl: item.picUrl,
+                      width: 50,
+                      height: 50,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                        width: 50,
+                        height: 50,
+                        color: colorScheme.surfaceContainerHighest,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        width: 50,
+                        height: 50,
+                        color: colorScheme.surfaceContainerHighest,
+                        child: Icon(
+                          Icons.music_note,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                errorWidget: (context, url, error) => Container(
-                  width: 50,
-                  height: 50,
-                  color: colorScheme.surfaceContainerHighest,
-                  child: Icon(
-                    Icons.music_note,
-                    color: colorScheme.onSurfaceVariant,
+                  // 序号标记
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primaryContainer,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(4),
+                        ),
+                      ),
+                      child: Text(
+                        '#${index + 1}',
+                        style: TextStyle(
+                          color: colorScheme.onPrimaryContainer,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ),
-            // 序号标记
-            Positioned(
-              bottom: 0,
-              right: 0,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(4),
-                  ),
-                ),
-                child: Text(
-                  '#${index + 1}',
-                  style: TextStyle(
-                    color: colorScheme.onPrimaryContainer,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
         title: Text(
           item.name,
           maxLines: 1,
@@ -743,23 +893,27 @@ class _PlaylistsPageState extends State<PlaylistsPage>
             ),
           ],
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.play_arrow),
-              onPressed: () => _playTrack(index),
-              tooltip: '播放',
-            ),
-            IconButton(
-              icon: const Icon(Icons.remove_circle_outline, size: 20),
-              color: Colors.redAccent,
-              onPressed: () => _confirmRemoveTrack(item),
-              tooltip: '从歌单移除',
-            ),
-          ],
-        ),
-        onTap: () => _playTrack(index),
+        trailing: _isEditMode
+            ? null
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.play_arrow),
+                    onPressed: () => _playTrack(index),
+                    tooltip: '播放',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline, size: 20),
+                    color: Colors.redAccent,
+                    onPressed: () => _confirmRemoveTrack(item),
+                    tooltip: '从歌单移除',
+                  ),
+                ],
+              ),
+        onTap: _isEditMode
+            ? () => _toggleTrackSelection(item)
+            : () => _playTrack(index),
       ),
     );
   }

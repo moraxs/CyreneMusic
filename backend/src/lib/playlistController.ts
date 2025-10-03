@@ -229,6 +229,36 @@ export const PlaylistDB = {
     const result = stmt.run({ $playlistId: playlistId, $trackId: trackId, $source: source });
     return result.changes > 0;
   },
+
+  // 批量删除歌曲
+  removeTracks(playlistId: number, userId: number, tracks: Array<{trackId: string, source: string}>) {
+    // 检查歌单是否属于该用户
+    const playlist = this.findById(playlistId);
+    if (!playlist || playlist.user_id !== userId) {
+      return 0;
+    }
+    
+    let totalDeleted = 0;
+    
+    // 使用事务确保原子性
+    const transaction = db.transaction(() => {
+      for (const track of tracks) {
+        const stmt = db.query(`
+          DELETE FROM playlist_tracks 
+          WHERE playlist_id = $playlistId AND track_id = $trackId AND source = $source
+        `);
+        const result = stmt.run({ 
+          $playlistId: playlistId, 
+          $trackId: track.trackId, 
+          $source: track.source 
+        });
+        totalDeleted += result.changes;
+      }
+    });
+    
+    transaction();
+    return totalDeleted;
+  },
 };
 
 // 验证用户身份的辅助函数
@@ -466,6 +496,43 @@ export async function removeTrackFromPlaylist(ctx: any) {
     console.error('   删除错误:', error);
     set.status = 500;
     return { status: 500, message: `删除歌曲失败: ${error.message}` };
+  }
+}
+
+// 批量删除歌曲
+export async function removeTracksFromPlaylist(ctx: any) {
+  const { set, headers, params, body } = ctx;
+  const { playlistId } = params;
+  const { tracks } = body;
+  
+  console.log('🗑️ [removeTracksFromPlaylist] 批量删除请求');
+  console.log('   playlistId:', playlistId);
+  console.log('   tracks count:', tracks?.length);
+  
+  const userId = getUserIdFromToken(headers.authorization);
+  if (!userId) {
+    set.status = 401;
+    return { status: 401, message: '未授权' };
+  }
+
+  if (!Array.isArray(tracks) || tracks.length === 0) {
+    set.status = 400;
+    return { status: 400, message: '请提供要删除的歌曲列表' };
+  }
+
+  try {
+    const deletedCount = PlaylistDB.removeTracks(parseInt(playlistId), userId, tracks);
+    console.log('   删除结果:', deletedCount, '首歌曲');
+    
+    return { 
+      status: 200, 
+      message: `成功删除 ${deletedCount} 首歌曲`,
+      deletedCount 
+    };
+  } catch (error: any) {
+    console.error('   批量删除错误:', error);
+    set.status = 500;
+    return { status: 500, message: `批量删除失败: ${error.message}` };
   }
 }
 
