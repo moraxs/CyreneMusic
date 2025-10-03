@@ -1164,7 +1164,7 @@ class _SettingsPageState extends State<SettingsPage> {
             if (!isForceUpdate)
               TextButton(
                 onPressed: () async {
-                  await VersionService().ignoreCurrentVersion();
+                  await VersionService().ignoreCurrentVersion(versionInfo.version);
                   if (mounted) {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(

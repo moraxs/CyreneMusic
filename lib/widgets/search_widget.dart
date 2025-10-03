@@ -4,6 +4,8 @@ import '../models/track.dart';
 import '../models/merged_track.dart';
 import '../services/search_service.dart';
 import '../services/player_service.dart';
+import '../services/auth_service.dart';
+import '../pages/auth/login_page.dart';
 
 /// 搜索组件（内嵌版本）
 class SearchWidget extends StatefulWidget {
@@ -41,7 +43,59 @@ class _SearchWidgetState extends State<SearchWidget> {
     }
   }
 
-  void _performSearch() {
+  /// 检查登录状态，如果未登录则跳转到登录页面
+  /// 返回 true 表示已登录或登录成功，返回 false 表示未登录或取消登录
+  Future<bool> _checkLoginStatus() async {
+    if (AuthService().isLoggedIn) {
+      return true;
+    }
+
+    // 显示提示并询问是否要登录
+    final shouldLogin = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('需要登录'),
+          ],
+        ),
+        content: const Text('此功能需要登录后才能使用，是否前往登录？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('去登录'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogin == true && mounted) {
+      // 跳转到登录页面
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const LoginPage(),
+        ),
+      );
+      
+      // 返回登录是否成功
+      return result == true && AuthService().isLoggedIn;
+    }
+
+    return false;
+  }
+
+  void _performSearch() async {
+    // 检查登录状态
+    final isLoggedIn = await _checkLoginStatus();
+    if (!isLoggedIn) return;
+
     final keyword = _searchController.text.trim();
     if (keyword.isNotEmpty) {
       _searchService.search(keyword);
@@ -281,16 +335,22 @@ class _SearchWidgetState extends State<SearchWidget> {
   }
 
   /// 播放合并后的歌曲（按优先级选择平台）
-  void _playMergedTrack(MergedTrack mergedTrack) {
+  void _playMergedTrack(MergedTrack mergedTrack) async {
+    // 检查登录状态
+    final isLoggedIn = await _checkLoginStatus();
+    if (!isLoggedIn) return;
+
     final bestTrack = mergedTrack.getBestTrack();
     PlayerService().playTrack(bestTrack);
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('正在播放: ${mergedTrack.name}'),
-        duration: const Duration(seconds: 1),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('正在播放: ${mergedTrack.name}'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
   }
 
   /// 显示平台选择器（长按时）
@@ -323,15 +383,19 @@ class _SearchWidgetState extends State<SearchWidget> {
               title: Text(track.getSourceName()),
               subtitle: Text(track.album),
               trailing: const Icon(Icons.play_arrow),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                PlayerService().playTrack(track);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('正在播放: ${track.name}'),
-                    duration: const Duration(seconds: 1),
-                  ),
-                );
+                // 检查登录状态
+                final isLoggedIn = await _checkLoginStatus();
+                if (isLoggedIn && mounted) {
+                  PlayerService().playTrack(track);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('正在播放: ${track.name}'),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                }
               },
             )),
           ],

@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/music_service.dart';
 import '../services/player_service.dart';
 import '../services/version_service.dart';
+import '../services/auth_service.dart';
 import '../models/toplist.dart';
 import '../models/track.dart';
 import '../models/version_info.dart';
@@ -14,6 +15,7 @@ import '../widgets/toplist_card.dart';
 import '../widgets/track_list_tile.dart';
 import '../widgets/search_widget.dart';
 import '../utils/page_visibility_notifier.dart';
+import '../pages/auth/login_page.dart';
 
 /// 首页 - 展示音乐和视频内容
 class HomePage extends StatefulWidget {
@@ -347,6 +349,54 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
     }
   }
 
+  /// 检查登录状态，如果未登录则跳转到登录页面
+  /// 返回 true 表示已登录或登录成功，返回 false 表示未登录或取消登录
+  Future<bool> _checkLoginStatus() async {
+    if (AuthService().isLoggedIn) {
+      return true;
+    }
+
+    // 显示提示并询问是否要登录
+    final shouldLogin = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('需要登录'),
+          ],
+        ),
+        content: const Text('此功能需要登录后才能使用，是否前往登录？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('去登录'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogin == true && mounted) {
+      // 跳转到登录页面
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const LoginPage(),
+        ),
+      );
+      
+      // 返回登录是否成功
+      return result == true && AuthService().isLoggedIn;
+    }
+
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context); // 必须调用以支持 AutomaticKeepAliveClientMixin
@@ -380,10 +430,14 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                   actions: [
                     IconButton(
                       icon: const Icon(Icons.search),
-                      onPressed: () {
-                        setState(() {
-                          _showSearch = true;
-                        });
+                      onPressed: () async {
+                        // 检查登录状态
+                        final isLoggedIn = await _checkLoginStatus();
+                        if (isLoggedIn && mounted) {
+                          setState(() {
+                            _showSearch = true;
+                          });
+                        }
                       },
                       tooltip: '搜索',
                     ),
@@ -560,15 +614,19 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                   final track = _cachedRandomTracks[index];
                   return _TrackBannerCard(
                     track: track,
-                    onTap: () {
-                      // 播放歌曲
-                      PlayerService().playTrack(track);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('正在加载：${track.name}'),
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
+                    onTap: () async {
+                      // 检查登录状态
+                      final isLoggedIn = await _checkLoginStatus();
+                      if (isLoggedIn && mounted) {
+                        // 播放歌曲
+                        PlayerService().playTrack(track);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('正在加载：${track.name}'),
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      }
                     },
                   );
                 },
@@ -665,14 +723,18 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
       child: Card(
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () {
-            PlayerService().playTrack(track);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('正在加载：${track.name}'),
-                duration: const Duration(seconds: 1),
-              ),
-            );
+          onTap: () async {
+            // 检查登录状态
+            final isLoggedIn = await _checkLoginStatus();
+            if (isLoggedIn && mounted) {
+              PlayerService().playTrack(track);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('正在加载：${track.name}'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+            }
           },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

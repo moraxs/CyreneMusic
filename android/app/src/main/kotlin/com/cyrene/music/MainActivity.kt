@@ -1,5 +1,6 @@
-package com.example.cyrene_music
+package com.cyrene.music
 
 import io.flutter.embedding.android.FlutterActivity
 
 class MainActivity : FlutterActivity()
+

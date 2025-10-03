@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
 import '../services/player_service.dart';
+import '../services/auth_service.dart';
+import '../pages/auth/login_page.dart';
 
 /// 歌曲列表项组件
-class TrackListTile extends StatelessWidget {
+class TrackListTile extends StatefulWidget {
   final Track track;
   final int? index;
   final VoidCallback? onTap;
@@ -17,6 +19,59 @@ class TrackListTile extends StatelessWidget {
   });
 
   @override
+  State<TrackListTile> createState() => _TrackListTileState();
+}
+
+class _TrackListTileState extends State<TrackListTile> {
+  /// 检查登录状态，如果未登录则跳转到登录页面
+  /// 返回 true 表示已登录或登录成功，返回 false 表示未登录或取消登录
+  Future<bool> _checkLoginStatus() async {
+    if (AuthService().isLoggedIn) {
+      return true;
+    }
+
+    // 显示提示并询问是否要登录
+    final shouldLogin = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('需要登录'),
+          ],
+        ),
+        content: const Text('此功能需要登录后才能使用，是否前往登录？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('去登录'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogin == true && mounted) {
+      // 跳转到登录页面
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const LoginPage(),
+        ),
+      );
+      
+      // 返回登录是否成功
+      return result == true && AuthService().isLoggedIn;
+    }
+
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     
@@ -26,14 +81,14 @@ class TrackListTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           // 排名
-          if (index != null)
+          if (widget.index != null)
             SizedBox(
               width: 32,
               child: Text(
-                '${index! + 1}',
+                '${widget.index! + 1}',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: index! < 3
+                  color: widget.index! < 3
                       ? colorScheme.primary
                       : colorScheme.onSurfaceVariant,
                 ),
@@ -45,7 +100,7 @@ class TrackListTile extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: CachedNetworkImage(
-              imageUrl: track.picUrl,
+              imageUrl: widget.track.picUrl,
               width: 50,
               height: 50,
               fit: BoxFit.cover,
@@ -75,7 +130,7 @@ class TrackListTile extends StatelessWidget {
         ],
       ),
       title: Text(
-        track.name,
+        widget.track.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
@@ -86,13 +141,13 @@ class TrackListTile extends StatelessWidget {
         children: [
           // 音乐来源图标
           Text(
-            track.getSourceIcon(),
+            widget.track.getSourceIcon(),
             style: const TextStyle(fontSize: 12),
           ),
           const SizedBox(width: 4),
           Expanded(
             child: Text(
-              '${track.artists} - ${track.album}',
+              '${widget.track.artists} - ${widget.track.album}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -106,15 +161,19 @@ class TrackListTile extends StatelessWidget {
         Icons.play_circle_outline,
         color: colorScheme.primary,
       ),
-      onTap: onTap ?? () {
-        // 播放歌曲
-        PlayerService().playTrack(track);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('正在加载：${track.name}'),
-            duration: const Duration(seconds: 1),
-          ),
-        );
+      onTap: widget.onTap ?? () async {
+        // 检查登录状态
+        final isLoggedIn = await _checkLoginStatus();
+        if (isLoggedIn && mounted) {
+          // 播放歌曲
+          PlayerService().playTrack(widget.track);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('正在加载：${widget.track.name}'),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
       },
     );
   }
