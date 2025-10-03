@@ -16,8 +16,9 @@ import '../models/lyric_line.dart';
 import '../models/track.dart';
 import '../models/song_detail.dart';
 import '../utils/lyric_parser.dart';
+import 'mobile_player_page.dart'; // 移动端播放器页面
 
-/// 全屏播放器页面
+/// 全屏播放器页面（根据平台自动选择布局）
 class PlayerPage extends StatefulWidget {
   const PlayerPage({super.key});
 
@@ -31,6 +32,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
   int _currentLyricIndex = -1;
   bool _isMaximized = false; // 窗口是否最大化
   bool _showPlaylist = false; // 是否显示播放列表
+  bool _showTranslation = true; // 是否显示译文
   late AnimationController _playlistAnimationController;
   late Animation<Offset> _playlistSlideAnimation;
   String? _lastTrackId; // 用于检测歌曲切换
@@ -279,6 +281,41 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     }
   }
 
+  /// 判断是否应该显示译文按钮
+  /// 只有当歌词非中文且存在翻译时才显示
+  bool _shouldShowTranslationButton() {
+    if (_lyrics.isEmpty) return false;
+    
+    // 检查是否有翻译
+    final hasTranslation = _lyrics.any((lyric) => 
+      lyric.translation != null && lyric.translation!.isNotEmpty
+    );
+    
+    if (!hasTranslation) return false;
+    
+    // 检查原文是否为中文（检查前几行非空歌词）
+    final sampleLyrics = _lyrics
+        .where((lyric) => lyric.text.trim().isNotEmpty)
+        .take(5)
+        .map((lyric) => lyric.text)
+        .join('');
+    
+    if (sampleLyrics.isEmpty) return false;
+    
+    // 判断是否主要为中文（中文字符占比）
+    final chineseCount = sampleLyrics.runes.where((rune) {
+      return (rune >= 0x4E00 && rune <= 0x9FFF) || // 基本汉字
+             (rune >= 0x3400 && rune <= 0x4DBF) || // 扩展A
+             (rune >= 0x20000 && rune <= 0x2A6DF); // 扩展B
+    }).length;
+    
+    final totalCount = sampleLyrics.runes.length;
+    final chineseRatio = totalCount > 0 ? chineseCount / totalCount : 0;
+    
+    // 如果中文字符占比小于30%，认为是非中文歌词
+    return chineseRatio < 0.3;
+  }
+
   /// 显示添加到歌单对话框
   void _showAddToPlaylistDialog(Track track) {
     final playlistService = PlaylistService();
@@ -384,6 +421,12 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
 
   @override
   Widget build(BuildContext context) {
+    // 移动平台使用专门的移动端播放器布局
+    if (Platform.isAndroid || Platform.isIOS) {
+      return const MobilePlayerPage();
+    }
+    
+    // 桌面平台使用原有的桌面布局
     final player = PlayerService();
     final song = player.currentSong;
     final track = player.currentTrack;
@@ -813,6 +856,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
                       fontSize: isCurrent ? 18 : 15,
                       fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
                       height: 1.4,
+                      fontFamily: 'Microsoft YaHei', // 使用微软雅黑字体
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -827,8 +871,8 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          // 翻译歌词
-                          if (lyric.translation != null && lyric.translation!.isNotEmpty)
+                          // 翻译歌词（根据开关显示）
+                          if (_showTranslation && lyric.translation != null && lyric.translation!.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 2),
                               child: Text(
@@ -841,6 +885,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
                                       ? Colors.white.withOpacity(0.75)
                                       : Colors.white.withOpacity(0.35),
                                   fontSize: isCurrent ? 13 : 12,
+                                  fontFamily: 'Microsoft YaHei', // 使用微软雅黑字体
                                 ),
                               ),
                             ),
@@ -958,6 +1003,44 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
+        // 译文显示开关（只在非中文歌词且有翻译时显示）
+        if (_shouldShowTranslationButton()) ...[
+          IconButton(
+            icon: Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: _showTranslation ? Colors.white.withOpacity(0.2) : Colors.transparent,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Center(
+                child: Text(
+                  '译',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Microsoft YaHei',
+                  ),
+                ),
+              ),
+            ),
+            onPressed: () {
+              setState(() {
+                _showTranslation = !_showTranslation;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(_showTranslation ? '已显示译文' : '已隐藏译文'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+            },
+            tooltip: _showTranslation ? '隐藏译文' : '显示译文',
+          ),
+          const SizedBox(width: 20),
+        ],
+        
         // 播放模式切换
         AnimatedBuilder(
           animation: PlaybackModeService(),

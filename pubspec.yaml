@@ -69,6 +69,12 @@ dependencies:
   
   # Cached network image for better performance
   cached_network_image: ^3.3.0
+  
+  # Permission handler for Android runtime permissions
+  permission_handler: ^11.0.0
+  
+  # High refresh rate support for Android
+  flutter_displaymode: ^0.7.0
 
 dev_dependencies:
   flutter_test:
@@ -80,6 +86,9 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  
+  # Icon generation
+  flutter_launcher_icons: ^0.13.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -122,3 +131,22 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# App icon configuration
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/tray_icon.png"
+  # Windows icon
+  windows:
+    generate: true
+    image_path: "assets/icons/tray_icon.png"
+    icon_size: 256
+  # macOS icon  
+  macos:
+    generate: true
+    image_path: "assets/icons/tray_icon.png"
+  # Web icon
+  web:
+    generate: true
+    image_path: "assets/icons/tray_icon.png"

@@ -30,10 +30,23 @@ class CustomTitleBar extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.music_note,
-                        color: colorScheme.primary,
-                        size: 20,
+                      // 使用应用图标
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.asset(
+                          'assets/icons/tray_icon.png',
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            // 如果图标加载失败，显示默认图标
+                            return Icon(
+                              Icons.music_note,
+                              color: colorScheme.primary,
+                              size: 20,
+                            );
+                          },
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Text(

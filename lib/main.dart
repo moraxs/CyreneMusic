@@ -9,9 +9,14 @@ import 'services/system_media_service.dart';
 import 'services/tray_service.dart';
 import 'services/developer_mode_service.dart';
 import 'services/cache_service.dart';
+import 'services/permission_service.dart';
+import 'services/url_service.dart';
 
 // 条件导入 SMTC
 import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
+
+// 条件导入 flutter_displaymode（仅 Android）
+import 'package:flutter_displaymode/flutter_displaymode.dart' if (dart.library.html) '';
 
 void main() async {
   // 初始化播放器服务
@@ -37,6 +42,14 @@ void main() async {
     
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.setTitle('Cyrene Music');
+      
+      // 设置窗口图标（任务栏图标）
+      if (Platform.isWindows) {
+        await windowManager.setIcon('assets/icons/tray_icon.ico');
+      } else if (Platform.isMacOS || Platform.isLinux) {
+        await windowManager.setIcon('assets/icons/tray_icon.png');
+      }
+      
       // 对于隐藏标题栏的窗口，确保以无边框模式运行，避免启动时不可见
       await windowManager.setAsFrameless();
       await windowManager.show();
@@ -53,12 +66,38 @@ void main() async {
     DeveloperModeService().addLog('🎮 SMTC 已初始化');
   }
   
+  // 🔧 初始化 URL 服务（必须在其他网络服务之前）
+  await UrlService().initialize();
+  DeveloperModeService().addLog('🌐 URL 服务已初始化');
+  
   // 初始化缓存服务
   await CacheService().initialize();
   DeveloperModeService().addLog('💾 缓存服务已初始化');
   
   await PlayerService().initialize();
   DeveloperModeService().addLog('🎵 播放器服务已初始化');
+  
+  // Android 平台特定初始化
+  if (Platform.isAndroid) {
+    // 请求通知权限（Android 13+）
+    final hasPermission = await PermissionService().requestNotificationPermission();
+    if (hasPermission) {
+      DeveloperModeService().addLog('✅ 通知权限已授予');
+    } else {
+      DeveloperModeService().addLog('⚠️ 通知权限未授予，媒体通知可能无法显示');
+    }
+    
+    // 启用高刷新率（如果设备支持）
+    try {
+      await FlutterDisplayMode.setHighRefreshRate();
+      final activeMode = await FlutterDisplayMode.active;
+      DeveloperModeService().addLog('🎨 显示模式: ${activeMode.width}x${activeMode.height} @${activeMode.refreshRate.toStringAsFixed(0)}Hz');
+      print('🎨 [DisplayMode] 已启用高刷新率: ${activeMode.refreshRate.toStringAsFixed(0)}Hz');
+    } catch (e) {
+      DeveloperModeService().addLog('⚠️ 高刷新率设置失败: $e');
+      print('⚠️ [DisplayMode] 设置高刷新率失败: $e');
+    }
+  }
   
   // 初始化系统媒体控件
   await SystemMediaService().initialize();
