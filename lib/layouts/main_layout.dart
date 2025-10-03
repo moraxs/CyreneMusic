@@ -4,7 +4,7 @@ import '../widgets/custom_title_bar.dart';
 import '../widgets/mini_player.dart';
 import '../pages/home_page.dart';
 import '../pages/history_page.dart';
-import '../pages/favorites_page.dart';
+import '../pages/playlists_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/developer_page.dart';
 import '../services/auth_service.dart';
@@ -30,7 +30,7 @@ class _MainLayoutState extends State<MainLayout> {
     final pages = <Widget>[
       const HomePage(),
       const HistoryPage(),
-      const FavoritesPage(),
+      const PlaylistsPage(),
       const SettingsPage(),
     ];
     
@@ -298,9 +298,9 @@ class _MainLayoutState extends State<MainLayout> {
             label: '历史',
           ),
           const NavigationDestination(
-            icon: Icon(Icons.favorite_border),
-            selectedIcon: Icon(Icons.favorite),
-            label: '收藏',
+            icon: Icon(Icons.library_music_outlined),
+            selectedIcon: Icon(Icons.library_music),
+            label: '歌单',
           ),
           const NavigationDestination(
             icon: Icon(Icons.settings_outlined),
@@ -370,9 +370,9 @@ class _MainLayoutState extends State<MainLayout> {
           label: Text('历史'),
         ),
         const NavigationRailDestination(
-          icon: Icon(Icons.favorite_border),
-          selectedIcon: Icon(Icons.favorite),
-          label: Text('收藏'),
+          icon: Icon(Icons.library_music_outlined),
+          selectedIcon: Icon(Icons.library_music),
+          label: Text('歌单'),
         ),
         const NavigationRailDestination(
           icon: Icon(Icons.settings_outlined),

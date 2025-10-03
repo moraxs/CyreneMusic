@@ -4,12 +4,14 @@ import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import '../utils/theme_manager.dart';
 import '../widgets/custom_color_picker_dialog.dart';
+import '../models/song_detail.dart';
 import '../services/url_service.dart';
 import '../services/auth_service.dart';
 import '../services/location_service.dart';
 import '../services/layout_preference_service.dart';
 import '../services/cache_service.dart';
 import '../services/download_service.dart';
+import '../services/audio_quality_service.dart';
 import '../pages/auth/login_page.dart';
 
 /// 设置页面
@@ -21,9 +23,6 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  String _audioQuality = 'high';
-  bool _autoPlay = true;
-
   @override
   void initState() {
     super.initState();
@@ -43,6 +42,8 @@ class _SettingsPageState extends State<SettingsPage> {
     CacheService().addListener(_onCacheChanged);
     // 监听下载服务变化
     DownloadService().addListener(_onDownloadChanged);
+    // 监听音质服务变化
+    AudioQualityService().addListener(_onAudioQualityChanged);
     
     // 如果已登录，获取 IP 归属地
     final isLoggedIn = AuthService().isLoggedIn;
@@ -65,6 +66,7 @@ class _SettingsPageState extends State<SettingsPage> {
     LayoutPreferenceService().removeListener(_onLayoutPreferenceChanged);
     CacheService().removeListener(_onCacheChanged);
     DownloadService().removeListener(_onDownloadChanged);
+    AudioQualityService().removeListener(_onAudioQualityChanged);
     super.dispose();
   }
 
@@ -114,6 +116,12 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _onDownloadChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onAudioQualityChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -189,19 +197,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 _buildSettingCard([
                   _buildListTile(
                     title: '音质选择',
-                    subtitle: _getAudioQualityText(_audioQuality),
+                    subtitle: '${AudioQualityService().getQualityName()} - ${AudioQualityService().getQualityDescription()}',
                     icon: Icons.high_quality,
                     onTap: () => _showAudioQualityDialog(),
-                  ),
-                  const Divider(height: 1),
-                  _buildSwitchTile(
-                    title: '自动播放',
-                    subtitle: '启动时自动播放上次内容',
-                    icon: Icons.play_circle_outline,
-                    value: _autoPlay,
-                    onChanged: (value) {
-                      setState(() => _autoPlay = value);
-                    },
                   ),
                 ]),
                 
@@ -365,22 +363,6 @@ class _SettingsPageState extends State<SettingsPage> {
   String _getCurrentThemeColorName() {
     final currentIndex = ThemeManager().getCurrentColorIndex();
     return ThemeColors.presets[currentIndex].name;
-  }
-
-  /// 获取音质文本
-  String _getAudioQualityText(String quality) {
-    switch (quality) {
-      case 'low':
-        return '标准音质';
-      case 'medium':
-        return '较高音质';
-      case 'high':
-        return '高音质';
-      case 'lossless':
-        return '无损音质';
-      default:
-        return '高音质';
-    }
   }
 
   /// 显示主题色选择器
@@ -619,6 +601,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// 显示音质选择对话框
   void _showAudioQualityDialog() {
+    final currentQuality = AudioQualityService().currentQuality;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -626,44 +610,68 @@ class _SettingsPageState extends State<SettingsPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            RadioListTile<String>(
+            RadioListTile<AudioQuality>(
               title: const Text('标准音质'),
-              value: 'low',
-              groupValue: _audioQuality,
+              subtitle: const Text('128kbps，节省流量'),
+              value: AudioQuality.standard,
+              groupValue: currentQuality,
               onChanged: (value) {
-                setState(() => _audioQuality = value!);
-                Navigator.pop(context);
+                if (value != null) {
+                  AudioQualityService().setQuality(value);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('音质设置已更新'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
               },
             ),
-            RadioListTile<String>(
-              title: const Text('较高音质'),
-              value: 'medium',
-              groupValue: _audioQuality,
+            RadioListTile<AudioQuality>(
+              title: const Text('极高音质'),
+              subtitle: const Text('320kbps，推荐'),
+              value: AudioQuality.exhigh,
+              groupValue: currentQuality,
               onChanged: (value) {
-                setState(() => _audioQuality = value!);
-                Navigator.pop(context);
+                if (value != null) {
+                  AudioQualityService().setQuality(value);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('音质设置已更新'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
               },
             ),
-            RadioListTile<String>(
-              title: const Text('高音质'),
-              value: 'high',
-              groupValue: _audioQuality,
-              onChanged: (value) {
-                setState(() => _audioQuality = value!);
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<String>(
+            RadioListTile<AudioQuality>(
               title: const Text('无损音质'),
-              value: 'lossless',
-              groupValue: _audioQuality,
+              subtitle: const Text('FLAC，音质最佳'),
+              value: AudioQuality.lossless,
+              groupValue: currentQuality,
               onChanged: (value) {
-                setState(() => _audioQuality = value!);
-                Navigator.pop(context);
+                if (value != null) {
+                  AudioQualityService().setQuality(value);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('音质设置已更新'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
               },
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
       ),
     );
   }

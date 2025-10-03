@@ -5,6 +5,7 @@ import '../models/track.dart';
 enum QueueSource {
   none,        // 无队列
   favorites,   // 收藏列表
+  playlist,    // 歌单
   history,     // 播放历史
   search,      // 搜索结果
   toplist,     // 排行榜

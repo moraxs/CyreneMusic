@@ -63,11 +63,33 @@ bun run dev
 
 ## 已实现功能
 
-- 网易云，酷狗，QQ音乐搜索
-- 网易云，酷狗，QQ音乐直链获取
-- B站热门榜获取
-- B站视频流获取（DASH格式）
-- 抖音直链
+### 网易云音乐
+- ✅ 歌曲搜索
+- ✅ 歌曲详情和直链获取（支持多音质）
+- ✅ 排行榜获取（飙升榜、新歌榜、原创榜、热歌榜）
+- ✅ **歌单详情解析**（NEW）
+- ✅ **专辑详情解析**（NEW）
+
+### QQ音乐 & 酷狗音乐
+- ✅ 歌曲搜索
+- ✅ 歌曲详情和直链获取
+
+### Bilibili
+- ✅ 视频排行榜获取
+- ✅ 视频流获取（DASH格式MPD）
+- ✅ 弹幕、搜索、评论
+- ✅ 番剧（PGC）播放支持
+
+### 抖音
+- ✅ 分享链接解析
+- ✅ 视频直链获取
+
+### 用户系统
+- ✅ 用户注册/登录
+- ✅ 邮箱验证码
+- ✅ 密码重置
+- ✅ 收藏功能
+- ✅ 管理员后台
 
 ## 📚 API 接口文档
 
@@ -142,6 +164,88 @@ bun run dev
 - **Endpoint**: `/toplists`
 - **Method**: `GET`
 - **返回示例**: 返回包含飙升、新歌、原创、热歌四个榜单的数组，每个榜单包含前20首歌。
+
+#### 获取歌单详情 🆕
+- **Endpoint**: `/playlist`
+- **Method**: `GET`
+
+**请求参数:**
+
+| 参数 | 是否必须 | 说明 |
+| :--- | :------- | :--- |
+| `id` | 是 | 歌单ID |
+| `limit` | 否 | 限制返回歌曲数量（不填返回全部） |
+
+**返回示例:**
+```json
+{
+  "status": 200,
+  "success": true,
+  "data": {
+    "playlist": {
+      "id": 19723756,
+      "name": "飙升榜",
+      "coverImgUrl": "https://...",
+      "creator": "网易云音乐",
+      "trackCount": 100,
+      "description": "...",
+      "tags": ["流行", "华语"],
+      "playCount": 1000000,
+      "tracks": [
+        {
+          "id": 123456,
+          "name": "歌曲名",
+          "artists": "艺术家",
+          "album": "专辑名",
+          "picUrl": "https://...",
+          "duration": 240000
+        }
+      ]
+    }
+  }
+}
+```
+
+#### 获取专辑详情 🆕
+- **Endpoint**: `/album`
+- **Method**: `GET`
+
+**请求参数:**
+
+| 参数 | 是否必须 | 说明 |
+| :--- | :------- | :--- |
+| `id` | 是 | 专辑ID |
+
+**返回示例:**
+```json
+{
+  "status": 200,
+  "success": true,
+  "data": {
+    "album": {
+      "id": 3406843,
+      "name": "叶惠美",
+      "coverImgUrl": "https://...",
+      "artist": "周杰伦",
+      "publishTime": 1057507200000,
+      "description": "...",
+      "songs": [
+        {
+          "id": 25643887,
+          "name": "以父之名",
+          "artists": "周杰伦",
+          "album": "叶惠美",
+          "picUrl": "https://...",
+          "duration": 329029
+        }
+      ]
+    }
+  }
+}
+```
+
+**详细文档**: 查看 [docs/PLAYLIST_API.md](docs/PLAYLIST_API.md)  
+**快速测试**: 查看 [docs/PLAYLIST_QUICK_TEST.md](docs/PLAYLIST_QUICK_TEST.md)
 
 ### QQ 音乐
 

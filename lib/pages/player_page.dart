@@ -9,6 +9,7 @@ import '../services/player_service.dart';
 import '../services/playback_mode_service.dart';
 import '../services/play_history_service.dart';
 import '../services/favorite_service.dart';
+import '../services/playlist_service.dart';
 import '../services/playlist_queue_service.dart';
 import '../services/download_service.dart';
 import '../models/lyric_line.dart';
@@ -148,20 +149,35 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     final currentTrack = PlayerService().currentTrack;
     if (currentTrack == null) return;
 
+    print('🔍 [PlayerPage] 开始加载歌词，当前 Track: ${currentTrack.name}');
+    print('   Track ID: ${currentTrack.id} (类型: ${currentTrack.id.runtimeType})');
+
     // 等待 currentSong 更新（最多等待3秒）
     SongDetail? song;
     final startTime = DateTime.now();
+    int attemptCount = 0;
     
     while (song == null && DateTime.now().difference(startTime).inSeconds < 3) {
       song = PlayerService().currentSong;
+      attemptCount++;
       
       // 验证 currentSong 是否匹配 currentTrack
       if (song != null) {
         final songId = song.id.toString();
         final trackId = currentTrack.id.toString();
         
+        if (attemptCount == 1) {
+          print('🔍 [PlayerPage] 找到 currentSong: ${song.name}');
+          print('   Song ID: ${song.id} (类型: ${song.id.runtimeType})');
+          print('   Track ID: ${currentTrack.id} (类型: ${currentTrack.id.runtimeType})');
+          print('   ID 匹配: ${songId == trackId}');
+        }
+        
         // 如果 ID 不匹配，说明 currentSong 还没更新
         if (songId != trackId) {
+          if (attemptCount <= 3) {
+            print('⚠️ [PlayerPage] ID 不匹配！Song ID: "$songId" vs Track ID: "$trackId"');
+          }
           song = null;
           await Future.delayed(const Duration(milliseconds: 100));
         }
@@ -171,7 +187,15 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     }
     
     if (song == null) {
-      print('⚠️ [PlayerPage] 等待歌曲详情超时');
+      print('❌ [PlayerPage] 等待歌曲详情超时！');
+      print('   尝试次数: $attemptCount');
+      print('   Track: ${currentTrack.name} (ID: ${currentTrack.id})');
+      final currentSong = PlayerService().currentSong;
+      if (currentSong != null) {
+        print('   CurrentSong 存在但 ID 不匹配: ${currentSong.name} (ID: ${currentSong.id})');
+      } else {
+        print('   CurrentSong 为 null');
+      }
       return;
     }
 
@@ -179,6 +203,21 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     final songDetail = song;
 
     try {
+      print('📝 [PlayerPage] 开始解析歌词');
+      print('   歌曲名: ${songDetail.name}');
+      print('   歌曲ID: ${songDetail.id}');
+      print('   原始歌词长度: ${songDetail.lyric.length} 字符');
+      print('   翻译长度: ${songDetail.tlyric.length} 字符');
+      
+      // 关键诊断：检查歌词内容
+      if (songDetail.lyric.isEmpty) {
+        print('   ❌ 错误：PlayerPage 读取到的 currentSong.lyric 为空！');
+        print('   这说明 PlayerService.currentSong 中的歌词确实是空的');
+      } else {
+        print('   ✅ PlayerPage 成功读取到歌词数据');
+        print('   歌词预览: ${songDetail.lyric.substring(0, songDetail.lyric.length > 50 ? 50 : songDetail.lyric.length)}...');
+      }
+      
       // 使用 Future.microtask 确保异步执行
       await Future.microtask(() {
         // 根据音乐来源选择不同的解析器
@@ -204,6 +243,11 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
         }
       });
 
+      if (_lyrics.isEmpty && songDetail.lyric.isNotEmpty) {
+        print('⚠️ [PlayerPage] 歌词解析结果为空，但原始歌词不为空！');
+        print('   原始歌词前100字符: ${songDetail.lyric.substring(0, songDetail.lyric.length > 100 ? 100 : songDetail.lyric.length)}');
+      }
+
       print('🎵 [PlayerPage] 加载歌词: ${_lyrics.length} 行 (${songDetail.name})');
       
       // 加载歌词后，更新并滚动到当前位置
@@ -214,6 +258,7 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
       }
     } catch (e) {
       print('❌ [PlayerPage] 加载歌词失败: $e');
+      print('   Stack trace: ${StackTrace.current}');
     }
   }
 
@@ -232,6 +277,108 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
       });
       // 固定显示方式，不需要滚动
     }
+  }
+
+  /// 显示添加到歌单对话框
+  void _showAddToPlaylistDialog(Track track) {
+    final playlistService = PlaylistService();
+    
+    // 确保已加载歌单列表
+    if (playlistService.playlists.isEmpty) {
+      playlistService.loadPlaylists();
+    }
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => AnimatedBuilder(
+        animation: playlistService,
+        builder: (context, child) {
+          final playlists = playlistService.playlists;
+          
+          if (playlists.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32.0),
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
+
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      const Text(
+                        '添加到歌单',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: playlists.length,
+                    itemBuilder: (context, index) {
+                      final playlist = playlists[index];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: playlist.isDefault
+                              ? Colors.red.withOpacity(0.2)
+                              : Colors.blue.withOpacity(0.2),
+                          child: Icon(
+                            playlist.isDefault
+                                ? Icons.favorite
+                                : Icons.queue_music,
+                            color: playlist.isDefault ? Colors.red : Colors.blue,
+                            size: 20,
+                          ),
+                        ),
+                        title: Text(playlist.name),
+                        subtitle: Text('${playlist.trackCount} 首歌曲'),
+                        onTap: () async {
+                          Navigator.pop(context);
+                          final success = await playlistService.addTrackToPlaylist(
+                            playlist.id,
+                            track,
+                          );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  success
+                                      ? '已添加到「${playlist.name}」'
+                                      : '添加失败',
+                                ),
+                                duration: const Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
 
@@ -861,34 +1008,16 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
         
         const SizedBox(width: 20),
         
-        // 收藏按钮
+        // 添加到歌单按钮
         if (currentTrack != null)
-          AnimatedBuilder(
-            animation: FavoriteService(),
-            builder: (context, child) {
-              final isFavorite = FavoriteService().isFavorite(currentTrack);
-              return IconButton(
-                icon: Icon(
-                  isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                  color: isFavorite ? Colors.redAccent : Colors.white,
-                ),
-                iconSize: 30,
-                onPressed: () async {
-                  final success = await FavoriteService().toggleFavorite(currentTrack);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          isFavorite ? '已取消收藏' : '已添加到收藏',
-                        ),
-                        duration: const Duration(seconds: 1),
-                      ),
-                    );
-                  }
-                },
-                tooltip: isFavorite ? '取消收藏' : '收藏',
-              );
-            },
+          IconButton(
+            icon: const Icon(
+              Icons.playlist_add_rounded,
+              color: Colors.white,
+            ),
+            iconSize: 30,
+            onPressed: () => _showAddToPlaylistDialog(currentTrack),
+            tooltip: '添加到歌单',
           ),
         
         const SizedBox(width: 20),

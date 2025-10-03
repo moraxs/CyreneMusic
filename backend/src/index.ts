@@ -6,7 +6,7 @@ import fs from "fs";
 
 // 直接复用 demo 目录下的现有业务逻辑（逐步替换为 src/lib 实现）
 import { neteaseSearch, qqSearch, kugouSearch } from "./lib/search";
-import { getToplists } from "./lib/neteaseApis";
+import { getToplists, playlistDetail, albumDetail } from "./lib/neteaseApis";
 import { getNeteaseSong, getQQSong, getKugouSong } from "./lib/song";
 import { readBiliCookie, checkBiliCookieValidity } from "./lib/bilibili";
 import { getBiliRanking } from "./lib/biliRanking";
@@ -41,6 +41,15 @@ import {
   getFavorites,
   removeFavorite
 } from "./lib/favoriteController";
+import {
+  getPlaylists,
+  createPlaylist,
+  updatePlaylist,
+  deletePlaylist,
+  addTrackToPlaylist,
+  getPlaylistTracks,
+  removeTrackFromPlaylist
+} from "./lib/playlistController";
 
 const host = "0.0.0.0";
 const port = 4055;
@@ -57,6 +66,33 @@ const app = new Elysia()
   .use(cors({ origin: true, credentials: true }))
   // 静态文件服务：/mpd 挂载到 demo/temp_mpd
   .use(staticPlugin({ assets: mpdDir, prefix: "/mpd" }))
+  // 全局请求日志（用于调试路由问题）
+  .onRequest((ctx) => {
+    const { request } = ctx as any;
+    console.log(`📨 [Request] ${request.method} ${request.url}`);
+  })
+  // 全局错误处理（捕获验证失败等错误）
+  .onError((ctx) => {
+    const { error, request, code } = ctx as any;
+    console.error(`❌ [Error] ${request.method} ${request.url}`);
+    console.error(`   Code: ${code}`);
+    console.error(`   Error:`, error.message || error);
+    
+    // 返回友好的错误信息
+    if (code === 'VALIDATION') {
+      return {
+        status: 400,
+        message: '请求参数验证失败',
+        error: error.message || String(error)
+      };
+    }
+    
+    return {
+      status: 500,
+      message: '服务器错误',
+      error: error.message || String(error)
+    };
+  })
   // DEV 模式：详细请求/响应日志（单条、折叠、省略号）
   .onBeforeHandle(async (ctx) => {
     const cfg = await getConfig();
@@ -153,6 +189,55 @@ const app = new Elysia()
     } catch (e: any) {
       set.status = 500;
       return { status: 500, msg: `获取榜单异常: ${e.message}` };
+    }
+  })
+
+  // 获取歌单详情
+  .get("/playlist", async ({ query, set }) => {
+    const { id, limit } = query as any;
+    if (!id) {
+      set.status = 400;
+      return { status: 400, msg: "必须提供歌单ID参数" };
+    }
+    try {
+      const neteaseCookieManager = new (await import('./lib/cookieManager')).default('cookie.txt');
+      const cookieText = await neteaseCookieManager.readCookie();
+      const limitNum = limit ? parseInt(limit as string) : null;
+      const playlistInfo = await playlistDetail(id as string, cookieText, limitNum);
+      return { 
+        status: 200, 
+        success: true,
+        data: {
+          playlist: playlistInfo
+        }
+      };
+    } catch (e: any) {
+      set.status = 500;
+      return { status: 500, success: false, msg: `获取歌单详情失败: ${e.message}` };
+    }
+  })
+
+  // 获取专辑详情
+  .get("/album", async ({ query, set }) => {
+    const { id } = query as any;
+    if (!id) {
+      set.status = 400;
+      return { status: 400, msg: "必须提供专辑ID参数" };
+    }
+    try {
+      const neteaseCookieManager = new (await import('./lib/cookieManager')).default('cookie.txt');
+      const cookieText = await neteaseCookieManager.readCookie();
+      const albumInfo = await albumDetail(id as string, cookieText);
+      return { 
+        status: 200, 
+        success: true,
+        data: {
+          album: albumInfo
+        }
+      };
+    } catch (e: any) {
+      set.status = 500;
+      return { status: 500, success: false, msg: `获取专辑详情失败: ${e.message}` };
     }
   })
 
@@ -517,6 +602,50 @@ const app = new Elysia()
   // 删除收藏
   .delete("/favorites/:trackId/:source", removeFavorite)
 
+  // ================= 歌单接口 =================
+  // 获取用户的所有歌单
+  .get("/playlists", getPlaylists)
+  
+  // 创建新歌单
+  .post("/playlists", createPlaylist, {
+    body: t.Object({
+      name: t.String()
+    })
+  })
+  
+  // 更新歌单（重命名）
+  .put("/playlists/:playlistId", updatePlaylist, {
+    body: t.Object({
+      name: t.String()
+    })
+  })
+  
+  // 删除歌单
+  .delete("/playlists/:playlistId", deletePlaylist)
+  
+  // 添加歌曲到歌单
+  .post("/playlists/:playlistId/tracks", addTrackToPlaylist, {
+    body: t.Object({
+      trackId: t.String(),
+      name: t.String(),
+      artists: t.String(),
+      album: t.String(),
+      picUrl: t.String(),
+      source: t.String()
+    })
+  })
+  
+  // 获取歌单中的歌曲
+  .get("/playlists/:playlistId/tracks", getPlaylistTracks)
+  
+  // 从歌单删除歌曲（使用 POST 避免 DELETE 的解析问题）
+  .post("/playlists/:playlistId/tracks/remove", removeTrackFromPlaylist, {
+    body: t.Object({
+      trackId: t.String(),
+      source: t.String()
+    })
+  })
+
   // ================= 管理员接口 =================
   // 管理员登录
   .post("/admin/login", adminLogin, {
@@ -543,9 +672,14 @@ const app = new Elysia()
 
   .listen(port, ({ hostname, port }) => {
     console.log(`Server running at http://${host}:${port}`);
-    logger.info("  - POST /search (Netease)");
-    logger.info("  - POST /song (Netease)");
-    logger.info("  - GET /toplists (Netease)");
+    logger.info("  === Netease Cloud Music ===");
+    logger.info("  - POST /search (Search Music)");
+    logger.info("  - POST /song (Get Song Info)");
+    logger.info("  - GET /toplists (Get Top Lists)");
+    logger.info("  - GET /playlist (Get Playlist Detail)");
+    logger.info("  - GET /album (Get Album Detail)");
+    logger.info("");
+    logger.info("  === QQ Music ===");
     logger.info("  - GET /qq/search (QQ Music)");
     logger.info("  - GET /qq/song (QQ Music)");
     logger.info("  - GET /kugou/search (Kugou Music)");
@@ -575,6 +709,15 @@ const app = new Elysia()
     logger.info("  - POST /favorites (Add Favorite)");
     logger.info("  - GET /favorites (Get Favorites)");
     logger.info("  - DELETE /favorites/:trackId/:source (Remove Favorite)");
+    logger.info("");
+    logger.info("  === Playlists ===");
+    logger.info("  - GET /playlists (Get User Playlists)");
+    logger.info("  - POST /playlists (Create Playlist)");
+    logger.info("  - PUT /playlists/:playlistId (Update Playlist)");
+    logger.info("  - DELETE /playlists/:playlistId (Delete Playlist)");
+    logger.info("  - POST /playlists/:playlistId/tracks (Add Track to Playlist)");
+    logger.info("  - GET /playlists/:playlistId/tracks (Get Playlist Tracks)");
+    logger.info("  - POST /playlists/:playlistId/tracks/remove (Remove Track from Playlist)");
     logger.info("");
     logger.info("  === Admin Panel ===");
     logger.info("  - POST /admin/login (Admin Login)");

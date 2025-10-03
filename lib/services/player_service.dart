@@ -15,6 +15,7 @@ import 'proxy_service.dart';
 import 'play_history_service.dart';
 import 'playback_mode_service.dart';
 import 'playlist_queue_service.dart';
+import 'audio_quality_service.dart';
 
 /// 播放状态枚举
 enum PlayerState {
@@ -104,8 +105,12 @@ class PlayerService extends ChangeNotifier {
   }
 
   /// 播放歌曲（通过Track对象）
-  Future<void> playTrack(Track track, {AudioQuality quality = AudioQuality.exhigh}) async {
+  Future<void> playTrack(Track track, {AudioQuality? quality}) async {
     try {
+      // 使用用户设置的音质，如果没有传入特定音质
+      final selectedQuality = quality ?? AudioQualityService().currentQuality;
+      print('🎵 [PlayerService] 播放音质: ${selectedQuality.toString()}');
+      
       // 清理上一首歌的临时文件
       await _cleanupCurrentTempFile();
       
@@ -115,6 +120,7 @@ class PlayerService extends ChangeNotifier {
       notifyListeners();
 
       print('🎵 [PlayerService] 开始播放: ${track.name} - ${track.artists}');
+      print('   Track ID: ${track.id} (类型: ${track.id.runtimeType})');
       
       // 记录到播放历史
       await PlayHistoryService().addToHistory(track);
@@ -147,6 +153,10 @@ class PlayerService extends ChangeNotifier {
             tlyric: metadata.tlyric,    // 从缓存恢复翻译
             source: track.source,
           );
+          
+          // 🔧 立即通知监听器，确保 PlayerPage 能获取到包含歌词的 currentSong
+          notifyListeners();
+          print('✅ [PlayerService] 已更新 currentSong（从缓存，包含歌词）');
 
           // 播放缓存文件
           await _audioPlayer.play(ap.DeviceFileSource(cachedFilePath));
@@ -165,7 +175,7 @@ class PlayerService extends ChangeNotifier {
       print('🌐 [PlayerService] 从网络获取歌曲');
       final songDetail = await MusicService().fetchSongDetail(
         songId: track.id,
-        quality: quality,
+        quality: selectedQuality,
         source: track.source,
       );
 
@@ -177,7 +187,22 @@ class PlayerService extends ChangeNotifier {
         return;
       }
 
+      // 检查歌词是否获取成功
+      print('📝 [PlayerService] 从网络获取的歌曲详情:');
+      print('   歌曲名: ${songDetail.name}');
+      print('   歌词长度: ${songDetail.lyric.length} 字符');
+      print('   翻译长度: ${songDetail.tlyric.length} 字符');
+      if (songDetail.lyric.isEmpty) {
+        print('   ⚠️ 警告：从网络获取的歌曲详情中歌词为空！');
+      } else {
+        print('   ✅ 歌词获取成功');
+      }
+
       _currentSong = songDetail;
+      
+      // 🔧 修复：立即通知监听器，让 PlayerPage 能获取到包含歌词的 currentSong
+      notifyListeners();
+      print('✅ [PlayerService] 已更新 currentSong 并通知监听器（包含歌词）');
 
       // 3. 播放音乐
       if (track.source == MusicSource.qq || track.source == MusicSource.kugou) {

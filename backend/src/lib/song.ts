@@ -61,6 +61,7 @@ export async function getNeteaseSong(jsondata: string, level: string) {
   const songData = urlData.data[0];
   const songInfo = detailData.songs?.[0] || {};
   return {
+    id: songInfo.id || parseInt(songId, 10),  // 🔧 添加 id 字段
     name: songInfo.name || '',
     pic: songInfo.al?.picUrl || '',
     ar_name: (songInfo.ar || []).map((a: any) => a.name).join('/'),
