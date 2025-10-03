@@ -11,6 +11,7 @@ import 'services/developer_mode_service.dart';
 import 'services/cache_service.dart';
 import 'services/permission_service.dart';
 import 'services/url_service.dart';
+import 'services/version_service.dart';
 
 // 条件导入 SMTC
 import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
@@ -69,6 +70,10 @@ void main() async {
   // 🔧 初始化 URL 服务（必须在其他网络服务之前）
   await UrlService().initialize();
   DeveloperModeService().addLog('🌐 URL 服务已初始化');
+  
+  // 初始化版本检查服务
+  await VersionService().initialize();
+  DeveloperModeService().addLog('📱 版本服务已初始化');
   
   // 初始化缓存服务
   await CacheService().initialize();

@@ -1,10 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/music_service.dart';
 import '../services/player_service.dart';
+import '../services/version_service.dart';
 import '../models/toplist.dart';
 import '../models/track.dart';
+import '../models/version_info.dart';
 import '../widgets/toplist_card.dart';
 import '../widgets/track_list_tile.dart';
 import '../widgets/search_widget.dart';
@@ -50,6 +55,9 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
       // 如果已有数据，初始化缓存并启动定时器
       _updateCachedTracksAndStartTimer();
     }
+    
+    // 🔍 首次进入时检查更新
+    _checkForUpdateOnce();
   }
 
   void _onPageVisibilityChanged() {
@@ -167,6 +175,176 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
     print('🎵 [HomePage] 重启轮播图定时器');
     _stopBannerTimer();
     _startBannerTimer();
+  }
+
+  /// 每次进入首页时检查更新
+  Future<void> _checkForUpdateOnce() async {
+    try {
+      // 延迟2秒后检查，避免影响首页加载
+      await Future.delayed(const Duration(seconds: 2));
+      
+      if (!mounted) return;
+      
+      print('🔍 [HomePage] 开始检查更新...');
+      
+      final versionInfo = await VersionService().checkForUpdate(silent: true);
+      
+      if (!mounted) return;
+      
+      // 如果有更新，检查是否应该提示
+      if (versionInfo != null && VersionService().hasUpdate) {
+        // 检查用户是否已忽略此版本
+        final shouldShow = await VersionService().shouldShowUpdateDialog(versionInfo);
+        if (shouldShow) {
+          _showUpdateDialog(versionInfo);
+        } else {
+          print('🔕 [HomePage] 用户已忽略此版本，不再提示');
+        }
+      }
+    } catch (e) {
+      print('❌ [HomePage] 检查更新失败: $e');
+    }
+  }
+
+  /// 显示更新提示对话框
+  void _showUpdateDialog(VersionInfo versionInfo) {
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: !versionInfo.forceUpdate, // 强制更新时不能关闭对话框
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.system_update, color: Colors.blue),
+            const SizedBox(width: 8),
+            const Text('发现新版本'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 版本信息
+              Text(
+                '最新版本: ${versionInfo.version}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                '当前版本: ${VersionService().currentVersion}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // 更新日志
+              const Text(
+                '更新内容：',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                versionInfo.changelog,
+                style: const TextStyle(fontSize: 14),
+              ),
+              
+              // 强制更新提示
+              if (versionInfo.forceUpdate) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning, color: Colors.orange.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '此版本为强制更新，请立即更新',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.orange.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          // 稍后提醒（仅非强制更新时显示）
+          if (!versionInfo.forceUpdate)
+            TextButton(
+              onPressed: () async {
+                // 保存用户忽略的版本号
+                await VersionService().ignoreCurrentVersion(versionInfo.version);
+                if (mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('已忽略版本 ${versionInfo.version}，有新版本时将再次提醒'),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              child: const Text('稍后提醒'),
+            ),
+          
+          // 立即更新
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _openDownloadUrl(versionInfo.downloadUrl);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('立即更新'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 打开下载链接
+  Future<void> _openDownloadUrl(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法打开下载链接')),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ [HomePage] 打开下载链接失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('打开链接失败: $e')),
+        );
+      }
+    }
   }
 
   @override
