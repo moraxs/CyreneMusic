@@ -743,7 +743,6 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
         final cardHeight = constraints.maxHeight;
         final coverSize = (cardHeight * 0.65).clamp(120.0, 160.0);
         final cardWidth = coverSize;
-        final infoHeight = cardHeight - coverSize;
         
         return Container(
           width: cardWidth,
@@ -766,7 +765,6 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
               },
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   // 专辑封面
                   Stack(
@@ -838,32 +836,33 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                       ),
                     ],
                   ),
-                  // 歌曲信息
-                  Container(
-                    height: infoHeight,
-                    padding: const EdgeInsets.all(8.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          track.name,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w500,
+                  // 歌曲信息 - 使用 Expanded 而不是固定高度，避免溢出
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            track.name,
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          track.artists,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
+                          const SizedBox(height: 2),
+                          Text(
+                            track.artists,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],

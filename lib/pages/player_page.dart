@@ -13,6 +13,7 @@ import '../services/playlist_service.dart';
 import '../services/playlist_queue_service.dart';
 import '../services/download_service.dart';
 import '../services/player_background_service.dart';
+import '../services/layout_preference_service.dart';
 import '../models/lyric_line.dart';
 import '../models/track.dart';
 import '../models/song_detail.dart';
@@ -57,6 +58,11 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     
     // 监听播放器状态
     PlayerService().addListener(_onPlayerStateChanged);
+    
+    // 监听布局模式变化（用于在 Windows 平台切换布局时刷新页面）
+    if (Platform.isWindows) {
+      LayoutPreferenceService().addListener(_onLayoutModeChanged);
+    }
     
     // 监听窗口状态（用于检测最大化）
     if (Platform.isWindows) {
@@ -106,10 +112,25 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     _lyricScrollController.dispose();
     _playlistAnimationController.dispose();
     PlayerService().removeListener(_onPlayerStateChanged);
+    
+    // 移除布局模式监听器
+    if (Platform.isWindows) {
+      LayoutPreferenceService().removeListener(_onLayoutModeChanged);
+    }
+    
     if (Platform.isWindows) {
       windowManager.removeListener(this);
     }
     super.dispose();
+  }
+  
+  /// 布局模式变化回调
+  void _onLayoutModeChanged() {
+    if (!mounted) return;
+    setState(() {
+      // 触发重建，让 build 方法根据新的布局模式选择合适的页面
+      print('🖥️ [PlayerPage] 布局模式已变化，刷新播放器页面');
+    });
   }
 
   void _onPlayerStateChanged() {
@@ -424,6 +445,11 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
   Widget build(BuildContext context) {
     // 移动平台使用专门的移动端播放器布局
     if (Platform.isAndroid || Platform.isIOS) {
+      return const MobilePlayerPage();
+    }
+    
+    // Windows 平台：如果启用了移动布局模式，也使用移动端播放器布局
+    if (Platform.isWindows && LayoutPreferenceService().isMobileLayout) {
       return const MobilePlayerPage();
     }
     

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
 import '../services/player_service.dart';
 import '../services/playback_mode_service.dart';
 import '../services/download_service.dart';
@@ -189,7 +190,8 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
       );
     }
 
-    return Scaffold(
+    // Windows 平台：添加圆角边框包裹
+    final scaffoldWidget = Scaffold(
       backgroundColor: Colors.black,
       body: AnimatedBuilder(
         animation: PlayerBackgroundService(),
@@ -209,11 +211,10 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
             builder: (context, constraints) {
               // 根据屏幕高度动态分配空间
               final screenHeight = constraints.maxHeight;
-              final topBarHeight = 56.0;
               
               return Column(
                 children: [
-                  // 顶部返回按钮和标题
+                  // 顶部栏（Windows 平台显示窗口控制按钮，移动平台显示返回按钮）
                   _buildAppBar(context),
                   
                   // 歌曲信息区域 - 使用 Expanded 让它占据剩余空间
@@ -251,6 +252,16 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
         ),
       ),
     );
+    
+    // Windows 平台：添加圆角边框
+    if (Platform.isWindows) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: scaffoldWidget,
+      );
+    }
+    
+    return scaffoldWidget;
   }
 
   /// 构建背景
@@ -347,6 +358,67 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
 
   /// 构建顶部应用栏
   Widget _buildAppBar(BuildContext context) {
+    // Windows 平台：显示窗口控制按钮和拖动区域
+    if (Platform.isWindows) {
+      return Container(
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.3),
+        ),
+        child: Row(
+          children: [
+            // 左侧：返回按钮
+            IconButton(
+              icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+              iconSize: 24,
+              onPressed: () => Navigator.pop(context),
+              tooltip: '返回',
+            ),
+            
+            // 中间：可拖动区域
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onPanStart: (details) {
+                  appWindow.startDragging();
+                },
+                child: const Center(
+                  child: Text(
+                    '正在播放',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            
+            // 右侧：窗口控制按钮
+            _buildWindowButton(
+              icon: Icons.remove,
+              tooltip: '最小化',
+              onPressed: () => appWindow.minimize(),
+            ),
+            _buildWindowButton(
+              icon: Icons.crop_square,
+              tooltip: '最大化（已禁用）',
+              onPressed: null, // 禁用最大化
+              isDisabled: true,
+            ),
+            _buildWindowButton(
+              icon: Icons.close,
+              tooltip: '关闭',
+              onPressed: () => appWindow.close(),
+              isClose: true,
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // 移动平台：显示普通返回按钮
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
@@ -372,6 +444,43 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
             },
           ),
         ],
+      ),
+    );
+  }
+  
+  /// 构建窗口控制按钮（Windows 专用）
+  Widget _buildWindowButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+    bool isClose = false,
+    bool isDisabled = false,
+  }) {
+    return SizedBox(
+      width: 46,
+      height: 40,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            hoverColor: isClose 
+                ? Colors.red.withOpacity(0.8)
+                : isDisabled
+                    ? Colors.transparent
+                    : Colors.white.withOpacity(0.1),
+            child: Center(
+              child: Icon(
+                icon,
+                size: 18,
+                color: isDisabled 
+                    ? Colors.white.withOpacity(0.3)
+                    : Colors.white,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
