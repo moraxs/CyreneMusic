@@ -217,9 +217,15 @@ git push origin v1.0.4
 - name: Setup Flutter
   uses: subosito/flutter-action@v2
   with:
-    flutter-version: '3.24.5'  # 修改这里
-    channel: 'stable'
+    channel: 'stable'  # 使用最新稳定版
+    cache: true        # 启用缓存加速构建
+    # flutter-version: '3.27.0'  # 可选：指定具体版本
 ```
+
+**说明**：
+- 默认使用最新稳定版 Flutter，自动支持最新的 Dart SDK
+- `cache: true` 可以缓存 Flutter SDK，加速后续构建
+- 如需固定版本，取消注释 `flutter-version` 并指定版本号
 
 ### 添加新平台
 

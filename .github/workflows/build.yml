@@ -51,8 +51,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
           channel: 'stable'
+          cache: true
 
       - name: Remove Windows-only dependencies
         run: |
@@ -86,8 +86,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
           channel: 'stable'
+          cache: true
 
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
@@ -126,8 +126,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
           channel: 'stable'
+          cache: true
 
       - name: Enable Linux desktop
         run: flutter config --enable-linux-desktop
@@ -166,8 +166,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
           channel: 'stable'
+          cache: true
 
       - name: Enable macOS desktop
         run: flutter config --enable-macos-desktop
@@ -207,8 +207,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
           channel: 'stable'
+          cache: true
 
       - name: Remove Windows-only dependencies
         run: |

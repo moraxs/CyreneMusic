@@ -112,9 +112,10 @@ A: 可以！使用手动触发方式，在 Actions 页面只勾选需要构建�
 
 如果需要修改构建配置，编辑 `.github/workflows/build.yml` 文件：
 
-- 修改 Flutter 版本: 更改 `flutter-version` 参数
-- 修改构建参数: 在 `flutter build` 命令后添加参数
-- 修改触发条件: 更改 `on` 部分的配置
+- **Flutter 版本**: 默认使用最新稳定版（`channel: 'stable'`），支持 Dart SDK 3.8.1+
+- **修改构建参数**: 在 `flutter build` 命令后添加参数
+- **修改触发条件**: 更改 `on` 部分的配置
+- **指定 Flutter 版本**（可选）: 添加 `flutter-version: '3.27.0'` 参数
 
 ## 🔗 相关链接
 
