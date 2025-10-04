@@ -16,6 +16,8 @@ import 'play_history_service.dart';
 import 'playback_mode_service.dart';
 import 'playlist_queue_service.dart';
 import 'audio_quality_service.dart';
+import 'listening_stats_service.dart';
+import 'dart:async' as async_lib;
 
 /// 播放状态枚举
 enum PlayerState {
@@ -43,6 +45,11 @@ class PlayerService extends ChangeNotifier {
   String? _currentTempFilePath;  // 记录当前临时文件路径
   final Map<String, Color> _themeColorCache = {}; // 主题色缓存
   final ValueNotifier<Color?> themeColorNotifier = ValueNotifier<Color?>(null); // 主题色通知器
+  
+  // 听歌统计相关
+  async_lib.Timer? _statsTimer; // 统计定时器
+  DateTime? _playStartTime; // 播放开始时间
+  int _sessionListeningTime = 0; // 当前会话累积的听歌时长
 
   PlayerState get state => _state;
   SongDetail? get currentSong => _currentSong;
@@ -61,16 +68,20 @@ class PlayerService extends ChangeNotifier {
       switch (state) {
         case ap.PlayerState.playing:
           _state = PlayerState.playing;
+          _startListeningTimeTracking(); // 开始听歌时长追踪
           break;
         case ap.PlayerState.paused:
           _state = PlayerState.paused;
+          _pauseListeningTimeTracking(); // 暂停听歌时长追踪
           break;
         case ap.PlayerState.stopped:
           _state = PlayerState.idle;
+          _pauseListeningTimeTracking(); // 暂停听歌时长追踪
           break;
         case ap.PlayerState.completed:
           _state = PlayerState.idle;
           _position = Duration.zero;
+          _pauseListeningTimeTracking(); // 暂停听歌时长追踪
           // 歌曲播放完毕，自动播放下一首
           _playNextFromHistory();
           break;
@@ -124,6 +135,9 @@ class PlayerService extends ChangeNotifier {
       
       // 记录到播放历史
       await PlayHistoryService().addToHistory(track);
+      
+      // 记录播放次数
+      await ListeningStatsService().recordPlayCount(track);
 
       // 1. 检查缓存
       final qualityStr = quality.toString().split('.').last;
@@ -346,6 +360,7 @@ class PlayerService extends ChangeNotifier {
   Future<void> pause() async {
     try {
       await _audioPlayer.pause();
+      _pauseListeningTimeTracking();
       print('⏸️ [PlayerService] 暂停播放');
     } catch (e) {
       print('❌ [PlayerService] 暂停失败: $e');
@@ -356,6 +371,7 @@ class PlayerService extends ChangeNotifier {
   Future<void> resume() async {
     try {
       await _audioPlayer.resume();
+      _startListeningTimeTracking();
       print('▶️ [PlayerService] 继续播放');
     } catch (e) {
       print('❌ [PlayerService] 继续播放失败: $e');
@@ -369,6 +385,9 @@ class PlayerService extends ChangeNotifier {
       
       // 清理临时文件
       await _cleanupCurrentTempFile();
+      
+      // 停止听歌时长追踪
+      _pauseListeningTimeTracking();
       
       _state = PlayerState.idle;
       _currentSong = null;
@@ -428,10 +447,60 @@ class PlayerService extends ChangeNotifier {
     }
   }
 
+  /// 开始听歌时长追踪
+  void _startListeningTimeTracking() {
+    // 如果已经在追踪，不重复启动
+    if (_statsTimer != null && _statsTimer!.isActive) return;
+    
+    _playStartTime = DateTime.now();
+    
+    // 每5秒记录一次听歌时长
+    _statsTimer = async_lib.Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_playStartTime != null) {
+        final now = DateTime.now();
+        final elapsed = now.difference(_playStartTime!).inSeconds;
+        
+        if (elapsed > 0) {
+          _sessionListeningTime += elapsed;
+          ListeningStatsService().accumulateListeningTime(elapsed);
+          _playStartTime = now;
+          
+          print('📊 [PlayerService] 累积听歌时长: +${elapsed}秒 (会话总计: ${_sessionListeningTime}秒)');
+        }
+      }
+    });
+    
+    print('📊 [PlayerService] 开始听歌时长追踪');
+  }
+  
+  /// 暂停听歌时长追踪
+  void _pauseListeningTimeTracking() {
+    if (_statsTimer != null) {
+      // 在停止定时器前，记录最后一段时间
+      if (_playStartTime != null) {
+        final now = DateTime.now();
+        final elapsed = now.difference(_playStartTime!).inSeconds;
+        
+        if (elapsed > 0) {
+          _sessionListeningTime += elapsed;
+          ListeningStatsService().accumulateListeningTime(elapsed);
+          print('📊 [PlayerService] 累积听歌时长: +${elapsed}秒 (会话总计: ${_sessionListeningTime}秒)');
+        }
+      }
+      
+      _statsTimer?.cancel();
+      _statsTimer = null;
+      _playStartTime = null;
+      print('📊 [PlayerService] 暂停听歌时长追踪');
+    }
+  }
+
   /// 清理资源
   @override
   void dispose() {
     print('🗑️ [PlayerService] 释放播放器资源...');
+    // 停止统计定时器
+    _pauseListeningTimeTracking();
     // 同步清理当前临时文件
     _cleanupCurrentTempFile();
     _audioPlayer.stop();

@@ -12,9 +12,12 @@ import 'services/cache_service.dart';
 import 'services/permission_service.dart';
 import 'services/url_service.dart';
 import 'services/version_service.dart';
+import 'services/player_background_service.dart';
+import 'services/persistent_storage_service.dart';
+import 'services/listening_stats_service.dart';
 
-// 条件导入 SMTC
-import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
+// 条件导入 SMTC（通过平台抽象层）
+import 'services/smtc_platform.dart';
 
 // 条件导入 flutter_displaymode（仅 Android）
 import 'package:flutter_displaymode/flutter_displaymode.dart' if (dart.library.html) '';
@@ -26,6 +29,15 @@ void main() async {
   // 添加应用启动日志
   DeveloperModeService().addLog('🚀 应用启动');
   DeveloperModeService().addLog('📱 平台: ${Platform.operatingSystem}');
+  
+  // 🔧 初始化持久化存储服务（必须最先初始化，其他服务依赖它）
+  await PersistentStorageService().initialize();
+  DeveloperModeService().addLog('💾 持久化存储服务已初始化');
+  
+  // 显示备份统计信息（用于调试）
+  final storageStats = PersistentStorageService().getBackupStats();
+  DeveloperModeService().addLog('📊 存储统计: ${storageStats['sharedPreferences_keys']} 个键');
+  DeveloperModeService().addLog('📂 备份路径: ${storageStats['backup_file_path']}');
   
   // 初始化 window_manager（必须在 runApp 之前）
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
@@ -79,6 +91,10 @@ void main() async {
   await CacheService().initialize();
   DeveloperModeService().addLog('💾 缓存服务已初始化');
   
+  // 初始化播放器背景服务
+  await PlayerBackgroundService().initialize();
+  DeveloperModeService().addLog('🎨 播放器背景服务已初始化');
+  
   await PlayerService().initialize();
   DeveloperModeService().addLog('🎵 播放器服务已初始化');
   
@@ -111,6 +127,10 @@ void main() async {
   // 初始化系统托盘
   await TrayService().initialize();
   DeveloperModeService().addLog('📌 系统托盘已初始化');
+  
+  // 初始化听歌统计服务
+  ListeningStatsService().initialize();
+  DeveloperModeService().addLog('📊 听歌统计服务已初始化');
   
   runApp(const MyApp());
   

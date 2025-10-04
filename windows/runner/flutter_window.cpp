@@ -3,6 +3,9 @@
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "system_color_helper.h"
+#include <flutter/method_channel.h>
+#include <flutter/standard_method_codec.h>
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -26,6 +29,25 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+
+  // Register system color platform channel
+  const std::string channel_name = "com.cyrene.music/system_color";
+  auto messenger = flutter_controller_->engine()->messenger();
+  auto channel = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      messenger, channel_name,
+      &flutter::StandardMethodCodec::GetInstance());
+
+  channel->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+        if (call.method_name() == "getSystemAccentColor") {
+          // Get system accent color
+          uint32_t color = SystemColorHelper::GetSystemAccentColor();
+          result->Success(flutter::EncodableValue(static_cast<int64_t>(color)));
+        } else {
+          result->NotImplemented();
+        }
+      });
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();

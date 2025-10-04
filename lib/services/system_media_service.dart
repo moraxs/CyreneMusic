@@ -5,7 +5,8 @@ import 'tray_service.dart';
 import 'audio_handler_service.dart';
 
 // 条件导入系统媒体控件
-import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
+// 使用平台抽象层，在 Windows 平台使用真实实现，其他平台使用桩实现
+import 'smtc_platform.dart';
 
 /// 系统媒体控件服务
 /// 用于在 Windows 和 Android 平台上集成原生媒体控件

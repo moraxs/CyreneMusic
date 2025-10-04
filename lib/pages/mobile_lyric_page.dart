@@ -148,7 +148,9 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
     
     // 计算目标位置（让当前歌词居中）
     final screenHeight = MediaQuery.of(context).size.height;
-    final itemHeight = _showTranslation ? 80.0 : 60.0; // 根据是否显示译文调整高度
+    // 根据屏幕大小和是否显示译文动态调整行高
+    final baseHeight = _showTranslation ? 72.0 : 52.0;
+    final itemHeight = (screenHeight * 0.08).clamp(baseHeight, baseHeight + 20.0);
     final targetOffset = _currentLyricIndex * itemHeight - screenHeight / 2 + itemHeight / 2;
     
     _scrollController.animateTo(
@@ -333,46 +335,60 @@ class _MobileLyricPageState extends State<MobileLyricPage> {
   Widget _buildLyricItem(LyricLine lyric, int index) {
     final isCurrent = index == _currentLyricIndex;
     
-    return AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 200),
-      style: TextStyle(
-        color: isCurrent ? Colors.white : Colors.white.withOpacity(0.5),
-        fontSize: isCurrent ? 18 : 15,
-        fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-        height: 1.6,
-        fontFamily: 'Microsoft YaHei',
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // 原文歌词
-            Text(
-              lyric.text.isEmpty ? '♪' : lyric.text,
-              textAlign: TextAlign.center,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 根据屏幕宽度自适应字体大小
+        final screenWidth = MediaQuery.of(context).size.width;
+        final currentFontSize = (screenWidth * 0.045).clamp(16.0, 20.0);
+        final normalFontSize = (screenWidth * 0.038).clamp(14.0, 16.0);
+        final translationCurrentSize = (screenWidth * 0.035).clamp(13.0, 15.0);
+        final translationNormalSize = (screenWidth * 0.032).clamp(12.0, 14.0);
+        
+        return AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 200),
+          style: TextStyle(
+            color: isCurrent ? Colors.white : Colors.white.withOpacity(0.5),
+            fontSize: isCurrent ? currentFontSize : normalFontSize,
+            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+            height: 1.6,
+            fontFamily: 'Microsoft YaHei',
+          ),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              vertical: (screenWidth * 0.02).clamp(6.0, 10.0),
+              horizontal: (screenWidth * 0.05).clamp(16.0, 24.0),
             ),
-            // 翻译歌词
-            if (_showTranslation && 
-                lyric.translation != null && 
-                lyric.translation!.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  lyric.translation!,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // 原文歌词
+                Text(
+                  lyric.text.isEmpty ? '♪' : lyric.text,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: isCurrent
-                        ? Colors.white.withOpacity(0.8)
-                        : Colors.white.withOpacity(0.4),
-                    fontSize: isCurrent ? 14 : 13,
-                    fontFamily: 'Microsoft YaHei',
-                  ),
                 ),
-              ),
-          ],
-        ),
-      ),
+                // 翻译歌词
+                if (_showTranslation && 
+                    lyric.translation != null && 
+                    lyric.translation!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      lyric.translation!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: isCurrent
+                            ? Colors.white.withOpacity(0.8)
+                            : Colors.white.withOpacity(0.4),
+                        fontSize: isCurrent ? translationCurrentSize : translationNormalSize,
+                        fontFamily: 'Microsoft YaHei',
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

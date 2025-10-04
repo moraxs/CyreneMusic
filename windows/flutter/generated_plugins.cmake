@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
   bitsdojo_window_windows
+  dynamic_color
   permission_handler_windows
   screen_retriever_windows
   tray_manager

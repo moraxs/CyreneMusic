@@ -4,13 +4,14 @@ import '../widgets/custom_title_bar.dart';
 import '../widgets/mini_player.dart';
 import '../pages/home_page.dart';
 import '../pages/history_page.dart';
-import '../pages/playlists_page.dart';
+import '../pages/my_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/developer_page.dart';
 import '../services/auth_service.dart';
 import '../services/layout_preference_service.dart';
 import '../services/developer_mode_service.dart';
 import '../utils/page_visibility_notifier.dart';
+import '../utils/theme_manager.dart';
 import '../pages/auth/login_page.dart';
 
 /// 主布局 - 包含侧边导航栏和内容区域
@@ -30,7 +31,7 @@ class _MainLayoutState extends State<MainLayout> {
     final pages = <Widget>[
       const HomePage(),
       const HistoryPage(),
-      const PlaylistsPage(),
+      const MyPage(), // 我的（歌单+听歌统计）
       const SettingsPage(),
     ];
     
@@ -51,6 +52,13 @@ class _MainLayoutState extends State<MainLayout> {
     LayoutPreferenceService().addListener(_onLayoutPreferenceChanged);
     // 监听开发者模式变化
     DeveloperModeService().addListener(_onDeveloperModeChanged);
+    
+    // 初始化系统主题色（在 build 完成后执行）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ThemeManager().initializeSystemColor(context);
+      }
+    });
   }
 
   @override
@@ -141,12 +149,12 @@ class _MainLayoutState extends State<MainLayout> {
             const Divider(),
             ListTile(
               leading: const Icon(Icons.person_outline),
-              title: const Text('个人信息'),
+              title: const Text('我的'),
               onTap: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('个人信息功能开发中...')),
-                );
+                setState(() {
+                  _selectedIndex = 2; // 切换到我的页面
+                });
               },
             ),
             ListTile(
@@ -298,9 +306,9 @@ class _MainLayoutState extends State<MainLayout> {
             label: '历史',
           ),
           const NavigationDestination(
-            icon: Icon(Icons.library_music_outlined),
-            selectedIcon: Icon(Icons.library_music),
-            label: '歌单',
+            icon: Icon(Icons.person_outlined),
+            selectedIcon: Icon(Icons.person),
+            label: '我的',
           ),
           const NavigationDestination(
             icon: Icon(Icons.settings_outlined),
@@ -318,9 +326,7 @@ class _MainLayoutState extends State<MainLayout> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _handleUserButtonTap,
-        child: AuthService().isLoggedIn
-            ? const Icon(Icons.account_circle)
-            : const Icon(Icons.account_circle_outlined),
+        child: _buildUserAvatar(),
       ),
     );
   }
@@ -358,35 +364,35 @@ class _MainLayoutState extends State<MainLayout> {
           child: Icon(_isRailExtended ? Icons.menu_open : Icons.menu),
         ),
       ),
-      destinations: [
-        const NavigationRailDestination(
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home),
-          label: Text('首页'),
-        ),
-        const NavigationRailDestination(
-          icon: Icon(Icons.history_outlined),
-          selectedIcon: Icon(Icons.history),
-          label: Text('历史'),
-        ),
-        const NavigationRailDestination(
-          icon: Icon(Icons.library_music_outlined),
-          selectedIcon: Icon(Icons.library_music),
-          label: Text('歌单'),
-        ),
-        const NavigationRailDestination(
-          icon: Icon(Icons.settings_outlined),
-          selectedIcon: Icon(Icons.settings),
-          label: Text('设置'),
-        ),
-        // 开发者模式导航项（动态显示）
-        if (DeveloperModeService().isDeveloperMode)
+        destinations: [
           const NavigationRailDestination(
-            icon: Icon(Icons.code),
-            selectedIcon: Icon(Icons.code),
-            label: Text('Dev'),
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: Text('首页'),
           ),
-      ],
+          const NavigationRailDestination(
+            icon: Icon(Icons.history_outlined),
+            selectedIcon: Icon(Icons.history),
+            label: Text('历史'),
+          ),
+          const NavigationRailDestination(
+            icon: Icon(Icons.person_outlined),
+            selectedIcon: Icon(Icons.person),
+            label: Text('我的'),
+          ),
+          const NavigationRailDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: Text('设置'),
+          ),
+          // 开发者模式导航项（动态显示）
+          if (DeveloperModeService().isDeveloperMode)
+            const NavigationRailDestination(
+              icon: Icon(Icons.code),
+              selectedIcon: Icon(Icons.code),
+              label: Text('Dev'),
+            ),
+        ],
       // 可以添加底部的额外按钮
       trailing: Expanded(
         child: Align(
@@ -400,17 +406,52 @@ class _MainLayoutState extends State<MainLayout> {
                   const Divider()
                 else
                   Container(),
-                IconButton(
-                  icon: AuthService().isLoggedIn
-                      ? const Icon(Icons.account_circle)
-                      : const Icon(Icons.account_circle_outlined),
-                  tooltip: AuthService().isLoggedIn ? '用户中心' : '登录',
-                  onPressed: _handleUserButtonTap,
+                Tooltip(
+                  message: AuthService().isLoggedIn ? '用户中心' : '登录',
+                  child: InkWell(
+                    onTap: _handleUserButtonTap,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: _buildUserAvatar(size: 32),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 构建用户头像
+  Widget _buildUserAvatar({double size = 24}) {
+    final user = AuthService().currentUser;
+    
+    if (user == null || !AuthService().isLoggedIn) {
+      return Icon(Icons.account_circle_outlined, size: size);
+    }
+
+    // 如果有QQ头像，显示头像
+    if (user.avatarUrl != null && user.avatarUrl!.isNotEmpty) {
+      return CircleAvatar(
+        radius: size / 2,
+        backgroundImage: NetworkImage(user.avatarUrl!),
+        onBackgroundImageError: (exception, stackTrace) {
+          // 头像加载失败时的处理
+          print('头像加载失败: $exception');
+        },
+        child: null,
+      );
+    }
+
+    // 没有头像时显示用户名首字母
+    return CircleAvatar(
+      radius: size / 2,
+      child: Text(
+        user.username[0].toUpperCase(),
+        style: TextStyle(fontSize: size / 2),
       ),
     );
   }

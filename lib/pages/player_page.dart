@@ -12,6 +12,9 @@ import '../services/favorite_service.dart';
 import '../services/playlist_service.dart';
 import '../services/playlist_queue_service.dart';
 import '../services/download_service.dart';
+import '../services/player_background_service.dart';
+import '../services/layout_preference_service.dart';
+import '../services/sleep_timer_service.dart';
 import '../models/lyric_line.dart';
 import '../models/track.dart';
 import '../models/song_detail.dart';
@@ -56,6 +59,11 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     
     // 监听播放器状态
     PlayerService().addListener(_onPlayerStateChanged);
+    
+    // 监听布局模式变化（用于在 Windows 平台切换布局时刷新页面）
+    if (Platform.isWindows) {
+      LayoutPreferenceService().addListener(_onLayoutModeChanged);
+    }
     
     // 监听窗口状态（用于检测最大化）
     if (Platform.isWindows) {
@@ -105,10 +113,25 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     _lyricScrollController.dispose();
     _playlistAnimationController.dispose();
     PlayerService().removeListener(_onPlayerStateChanged);
+    
+    // 移除布局模式监听器
+    if (Platform.isWindows) {
+      LayoutPreferenceService().removeListener(_onLayoutModeChanged);
+    }
+    
     if (Platform.isWindows) {
       windowManager.removeListener(this);
     }
     super.dispose();
+  }
+  
+  /// 布局模式变化回调
+  void _onLayoutModeChanged() {
+    if (!mounted) return;
+    setState(() {
+      // 触发重建，让 build 方法根据新的布局模式选择合适的页面
+      print('🖥️ [PlayerPage] 布局模式已变化，刷新播放器页面');
+    });
   }
 
   void _onPlayerStateChanged() {
@@ -426,6 +449,11 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
       return const MobilePlayerPage();
     }
     
+    // Windows 平台：如果启用了移动布局模式，也使用移动端播放器布局
+    if (Platform.isWindows && LayoutPreferenceService().isMobileLayout) {
+      return const MobilePlayerPage();
+    }
+    
     // 桌面平台使用原有的桌面布局
     final player = PlayerService();
     final song = player.currentSong;
@@ -449,69 +477,79 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
         borderRadius: _isMaximized 
             ? BorderRadius.zero  // 最大化时无圆角
             : BorderRadius.circular(16), // 正常时圆角窗口
-        child: Stack(
-          children: [
-            // 背景（主题色渐变）- 使用 ValueListenableBuilder 精确监听主题色变化
-            _buildGradientBackground(),
-
-            // 主要内容区域
-            SafeArea(
-              child: Column(
-                children: [
-                  // 可拖动的顶部区域
-                  _buildDraggableTopBar(context),
-                  
-                  // 左右分栏内容区域（静态部分）
-                  Expanded(
-                    child: Row(
-                      children: [
-                        // 左侧：歌曲信息（静态，不随进度更新）
-                        Expanded(
-                          flex: 5,
-                          child: _buildLeftPanel(song, track),
-                        ),
-                        
-                        // 右侧：歌词（使用独立监听）
-                        Expanded(
-                          flex: 4,
-                          child: _buildRightPanel(),
-                        ),
-                      ],
+        child: AnimatedBuilder(
+          animation: PlayerBackgroundService(),
+          builder: (context, child) {
+            return Stack(
+              children: [
+                // 背景层（根据设置显示不同背景）
+                _buildGradientBackground(),
+                
+                // 主要内容区域
+                child!,
+              ],
+            );
+          },
+          child: Stack(
+            children: [
+              SafeArea(
+                child: Column(
+                  children: [
+                    // 可拖动的顶部区域
+                    _buildDraggableTopBar(context),
+                    
+                    // 左右分栏内容区域（静态部分）
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // 左侧：歌曲信息（静态，不随进度更新）
+                          Expanded(
+                            flex: 5,
+                            child: _buildLeftPanel(song, track),
+                          ),
+                          
+                          // 右侧：歌词（使用独立监听）
+                          Expanded(
+                            flex: 4,
+                            child: _buildRightPanel(),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  
-                  // 底部进度条和控制按钮（使用 AnimatedBuilder 监听播放进度）
-                  AnimatedBuilder(
-                    animation: PlayerService(),
-                    builder: (context, child) {
-                      return _buildBottomControls(PlayerService());
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            // 播放列表侧板背景遮罩
-            if (_showPlaylist)
-              GestureDetector(
-                onTap: _togglePlaylist,
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                  child: Container(
-                    color: Colors.black.withOpacity(0.3),
-                  ),
+                    
+                    // 底部进度条和控制按钮（使用 AnimatedBuilder 监听播放进度）
+                    AnimatedBuilder(
+                      animation: PlayerService(),
+                      builder: (context, child) {
+                        return _buildBottomControls(PlayerService());
+                      },
+                    ),
+                  ],
                 ),
               ),
-            
-            // 播放列表内容
-            SlideTransition(
-              position: _playlistSlideAnimation,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: _buildPlaylistPanel(),
+
+              // 播放列表侧板背景遮罩
+              if (_showPlaylist)
+                GestureDetector(
+                  onTap: _togglePlaylist,
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                    child: Container(
+                      color: Colors.black.withOpacity(0.3),
+                    ),
+                  ),
+                ),
+              
+              // 播放列表内容
+              SlideTransition(
+                position: _playlistSlideAnimation,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildPlaylistPanel(),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -629,35 +667,113 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     );
   }
 
-  /// 构建渐变背景（主题色到灰色）
+  /// 构建渐变背景（根据设置选择背景类型）
   Widget _buildGradientBackground() {
+    final backgroundService = PlayerBackgroundService();
     final greyColor = Colors.grey[900] ?? const Color(0xFF212121);
     
-    // 使用 ValueListenableBuilder 精确监听主题色变化，不受播放进度影响
-    return ValueListenableBuilder<Color?>(
-      valueListenable: PlayerService().themeColorNotifier,
-      builder: (context, themeColor, child) {
-        final color = themeColor ?? Colors.deepPurple;
-        print('🎨 [PlayerPage] 构建背景，主题色: $color');
+    switch (backgroundService.backgroundType) {
+      case PlayerBackgroundType.adaptive:
+        // 自适应背景（默认行为）- 使用主题色渐变
+        return ValueListenableBuilder<Color?>(
+          valueListenable: PlayerService().themeColorNotifier,
+          builder: (context, themeColor, child) {
+            final color = themeColor ?? Colors.deepPurple;
+            print('🎨 [PlayerPage] 构建背景，主题色: $color');
+            
+            return RepaintBoundary(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 500), // 主题色变化时平滑过渡
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      color,        // 主题色（不透明）
+                      greyColor,    // 灰色（不透明）
+                    ],
+                    stops: const [0.0, 1.0],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
         
+      case PlayerBackgroundType.solidColor:
+        // 纯色背景（添加到灰色的渐变）
         return RepaintBoundary(
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 500), // 主题色变化时平滑过渡
+            duration: const Duration(milliseconds: 500),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  color,        // 主题色（不透明）
-                  greyColor,    // 灰色（不透明）
+                  backgroundService.solidColor,
+                  greyColor,
                 ],
                 stops: const [0.0, 1.0],
               ),
             ),
           ),
         );
-      },
-    );
+        
+      case PlayerBackgroundType.image:
+        // 图片背景
+        if (backgroundService.imagePath != null) {
+          final imageFile = File(backgroundService.imagePath!);
+          if (imageFile.existsSync()) {
+            return Stack(
+              children: [
+                // 图片层
+                Positioned.fill(
+                  child: Image.file(
+                    imageFile,
+                    fit: BoxFit.cover, // 保持原比例裁剪
+                  ),
+                ),
+                // 模糊层
+                if (backgroundService.blurAmount > 0)
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(
+                        sigmaX: backgroundService.blurAmount,
+                        sigmaY: backgroundService.blurAmount,
+                      ),
+                      child: Container(
+                        color: Colors.black.withOpacity(0.3), // 添加半透明遮罩
+                      ),
+                    ),
+                  )
+                else
+                  // 无模糊时也添加浅色遮罩以确保文字可读
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withOpacity(0.2),
+                    ),
+                  ),
+              ],
+            );
+          }
+        }
+        // 如果没有设置图片，使用默认背景
+        return RepaintBoundary(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  greyColor,
+                  Colors.black,
+                ],
+                stops: const [0.0, 1.0],
+              ),
+            ),
+          ),
+        );
+    }
   }
 
   /// 构建左侧面板（歌曲信息）
@@ -1072,6 +1188,27 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
                 );
               },
               tooltip: PlaybackModeService().getModeName(),
+            );
+          },
+        ),
+        
+        const SizedBox(width: 20),
+        
+        // 睡眠定时器
+        AnimatedBuilder(
+          animation: SleepTimerService(),
+          builder: (context, child) {
+            final timer = SleepTimerService();
+            final isActive = timer.isActive;
+            
+            return IconButton(
+              icon: Icon(
+                isActive ? Icons.bedtime : Icons.bedtime_outlined,
+                color: isActive ? Colors.amber : Colors.white,
+              ),
+              iconSize: 30,
+              onPressed: () => _showSleepTimerDialog(context),
+              tooltip: isActive ? '定时停止: ${timer.remainingTimeString}' : '睡眠定时器',
             );
           },
         ),
@@ -1519,6 +1656,260 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
       default:
         return '🎵';
     }
+  }
+
+  /// 显示睡眠定时器对话框
+  void _showSleepTimerDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => _SleepTimerDialog(),
+    );
+  }
+}
+
+/// 睡眠定时器对话框
+class _SleepTimerDialog extends StatefulWidget {
+  @override
+  State<_SleepTimerDialog> createState() => _SleepTimerDialogState();
+}
+
+class _SleepTimerDialogState extends State<_SleepTimerDialog> {
+  int _selectedTabIndex = 0; // 0: 时长, 1: 时间
+  int _selectedDuration = 30; // 默认30分钟
+
+  // 预设时长选项（分钟）
+  final List<int> _durationOptions = [15, 30, 45, 60, 90, 120];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final timer = SleepTimerService();
+
+    return AlertDialog(
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('睡眠定时器'),
+          if (timer.isActive)
+            TextButton.icon(
+              onPressed: () {
+                timer.cancel();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('定时器已取消')),
+                );
+              },
+              icon: const Icon(Icons.cancel),
+              label: const Text('取消定时'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+            ),
+        ],
+      ),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 当前定时器状态
+            if (timer.isActive)
+              Container(
+                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.bedtime,
+                      color: colorScheme.onPrimaryContainer,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '定时器运行中',
+                            style: TextStyle(
+                              color: colorScheme.onPrimaryContainer,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          AnimatedBuilder(
+                            animation: timer,
+                            builder: (context, child) {
+                              return Text(
+                                '剩余时间: ${timer.remainingTimeString}',
+                                style: TextStyle(
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (timer.isActive)
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline),
+                        onPressed: () {
+                          timer.extend(15);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('已延长15分钟')),
+                          );
+                        },
+                        tooltip: '延长15分钟',
+                        color: colorScheme.onPrimaryContainer,
+                      ),
+                  ],
+                ),
+              ),
+
+            // 标签选择器
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(
+                  value: 0,
+                  label: Text('播放时长'),
+                  icon: Icon(Icons.timer_outlined),
+                ),
+                ButtonSegment(
+                  value: 1,
+                  label: Text('指定时间'),
+                  icon: Icon(Icons.schedule),
+                ),
+              ],
+              selected: {_selectedTabIndex},
+              onSelectionChanged: (Set<int> selected) {
+                setState(() {
+                  _selectedTabIndex = selected.first;
+                });
+              },
+            ),
+
+            const SizedBox(height: 24),
+
+            // 内容区域
+            if (_selectedTabIndex == 0) _buildDurationTab(colorScheme),
+            if (_selectedTabIndex == 1) _buildTimeTab(context, colorScheme),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+      ],
+    );
+  }
+
+  /// 时长选择标签页
+  Widget _buildDurationTab(ColorScheme colorScheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '选择播放时长',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: _durationOptions.map((duration) {
+            final isSelected = duration == _selectedDuration;
+            return FilterChip(
+              label: Text('${duration}分钟'),
+              selected: isSelected,
+              onSelected: (selected) {
+                if (selected) {
+                  setState(() {
+                    _selectedDuration = duration;
+                  });
+                  SleepTimerService().setTimerByDuration(duration);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('定时器已设置: ${duration}分钟后停止播放'),
+                    ),
+                  );
+                }
+              },
+              showCheckmark: false,
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  /// 时间选择标签页
+  Widget _buildTimeTab(BuildContext context, ColorScheme colorScheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '选择停止时间',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () async {
+              final TimeOfDay? selectedTime = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay.now(),
+                builder: (context, child) {
+                  return MediaQuery(
+                    data: MediaQuery.of(context).copyWith(
+                      alwaysUse24HourFormat: true,
+                    ),
+                    child: child!,
+                  );
+                },
+              );
+
+              if (selectedTime != null) {
+                SleepTimerService().setTimerByTime(selectedTime);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      '定时器已设置: ${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')} 停止播放',
+                    ),
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.access_time),
+            label: const Text('选择时间'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '音乐将在指定时间自动停止播放',
+          style: TextStyle(
+            fontSize: 12,
+            color: colorScheme.onSurface.withOpacity(0.6),
+          ),
+        ),
+      ],
+    );
   }
 }
 

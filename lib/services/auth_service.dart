@@ -60,6 +60,12 @@ class AuthService extends ChangeNotifier {
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
+  
+  /// 获取认证令牌（格式：user_{userId}）
+  String? get token {
+    if (_currentUser == null) return null;
+    return 'user_${_currentUser!.id}';
+  }
 
   /// 从本地存储加载用户信息
   Future<void> _loadUserFromStorage() async {
