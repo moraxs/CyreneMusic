@@ -186,64 +186,84 @@ class MiniPlayer extends StatelessWidget {
 
   /// 构建播放控制按钮
   Widget _buildControls(PlayerService player, ColorScheme colorScheme, BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 播放时间
-        Text(
-          _formatDuration(player.position),
-          style: TextStyle(
-            fontSize: 12,
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const Text(' / '),
-        Text(
-          _formatDuration(player.duration),
-          style: TextStyle(
-            fontSize: 12,
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(width: 16),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 根据可用宽度决定是否显示时间信息
+        final screenWidth = MediaQuery.of(context).size.width;
+        final showTime = screenWidth > 380; // 小于 380px 隐藏时间
         
-        // 播放/暂停按钮
-        if (player.isLoading)
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 播放时间（可选显示）
+            if (showTime) ...[
+              Text(
+                _formatDuration(player.position),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const Text(' / '),
+              Text(
+                _formatDuration(player.duration),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
+            
+            // 播放/暂停按钮
+            if (player.isLoading)
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              )
+            else
+              IconButton(
+                icon: Icon(
+                  player.isPlaying ? Icons.pause : Icons.play_arrow,
+                ),
+                onPressed: () {
+                  // 阻止事件冒泡到 GestureDetector
+                  player.togglePlayPause();
+                },
                 color: colorScheme.primary,
+                iconSize: 28,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 40,
+                  minHeight: 40,
+                ),
+              ),
+            
+            // 停止按钮
+            IconButton(
+              icon: const Icon(Icons.stop),
+              onPressed: () {
+                // 阻止事件冒泡到 GestureDetector
+                player.stop();
+              },
+              color: colorScheme.onSurfaceVariant,
+              iconSize: 22,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(
+                minWidth: 40,
+                minHeight: 40,
               ),
             ),
-          )
-        else
-          IconButton(
-            icon: Icon(
-              player.isPlaying ? Icons.pause : Icons.play_arrow,
-            ),
-            onPressed: () {
-              // 阻止事件冒泡到 GestureDetector
-              player.togglePlayPause();
-            },
-            color: colorScheme.primary,
-            iconSize: 32,
-          ),
-        
-        // 停止按钮
-        IconButton(
-          icon: const Icon(Icons.stop),
-          onPressed: () {
-            // 阻止事件冒泡到 GestureDetector
-            player.stop();
-          },
-          color: colorScheme.onSurfaceVariant,
-          iconSize: 24,
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 

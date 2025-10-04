@@ -15,6 +15,7 @@ import '../services/cache_service.dart';
 import '../services/download_service.dart';
 import '../services/audio_quality_service.dart';
 import '../services/version_service.dart';
+import '../services/player_background_service.dart';
 import '../pages/auth/login_page.dart';
 
 /// 设置页面
@@ -47,6 +48,8 @@ class _SettingsPageState extends State<SettingsPage> {
     DownloadService().addListener(_onDownloadChanged);
     // 监听音质服务变化
     AudioQualityService().addListener(_onAudioQualityChanged);
+    // 监听播放器背景服务变化
+    PlayerBackgroundService().addListener(_onPlayerBackgroundChanged);
     
     // 如果已登录，获取 IP 归属地
     final isLoggedIn = AuthService().isLoggedIn;
@@ -70,6 +73,7 @@ class _SettingsPageState extends State<SettingsPage> {
     CacheService().removeListener(_onCacheChanged);
     DownloadService().removeListener(_onDownloadChanged);
     AudioQualityService().removeListener(_onAudioQualityChanged);
+    PlayerBackgroundService().removeListener(_onPlayerBackgroundChanged);
     super.dispose();
   }
 
@@ -130,6 +134,12 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  void _onPlayerBackgroundChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -180,6 +190,13 @@ class _SettingsPageState extends State<SettingsPage> {
                     subtitle: _getCurrentThemeColorName(),
                     icon: Icons.color_lens,
                     onTap: () => _showThemeColorPicker(),
+                  ),
+                  const Divider(height: 1),
+                  _buildListTile(
+                    title: '播放器背景',
+                    subtitle: '${PlayerBackgroundService().getBackgroundTypeName()} - ${PlayerBackgroundService().getBackgroundTypeDescription()}',
+                    icon: Icons.wallpaper,
+                    onTap: () => _showPlayerBackgroundDialog(),
                   ),
                   // Windows 平台显示布局模式选择
                   if (Platform.isWindows) ...[
@@ -2113,5 +2130,275 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
+  }
+
+  /// 显示播放器背景设置对话框
+  void _showPlayerBackgroundDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => _PlayerBackgroundDialog(
+        onChanged: () {
+          // 当对话框内的设置改变时，刷新设置页面
+          if (mounted) {
+            setState(() {});
+          }
+        },
+      ),
+    );
+  }
+}
+
+/// 播放器背景设置对话框
+class _PlayerBackgroundDialog extends StatefulWidget {
+  final VoidCallback onChanged;
+  
+  const _PlayerBackgroundDialog({required this.onChanged});
+
+  @override
+  State<_PlayerBackgroundDialog> createState() => _PlayerBackgroundDialogState();
+}
+
+class _PlayerBackgroundDialogState extends State<_PlayerBackgroundDialog> {
+  @override
+  Widget build(BuildContext context) {
+    final backgroundService = PlayerBackgroundService();
+    final currentType = backgroundService.backgroundType;
+
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.wallpaper),
+          SizedBox(width: 8),
+          Text('播放器背景设置'),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 自适应背景
+            RadioListTile<PlayerBackgroundType>(
+              title: const Text('自适应背景'),
+              subtitle: const Text('基于专辑封面提取颜色'),
+              value: PlayerBackgroundType.adaptive,
+              groupValue: currentType,
+              onChanged: (value) async {
+                await backgroundService.setBackgroundType(value!);
+                setState(() {});
+                widget.onChanged();
+              },
+            ),
+            
+            // 纯色背景
+            RadioListTile<PlayerBackgroundType>(
+              title: const Text('纯色背景'),
+              subtitle: const Text('使用自定义纯色'),
+              value: PlayerBackgroundType.solidColor,
+              groupValue: currentType,
+              onChanged: (value) async {
+                await backgroundService.setBackgroundType(value!);
+                setState(() {});
+                widget.onChanged();
+              },
+            ),
+            
+            // 纯色选择器（仅在选择纯色时显示）
+            if (currentType == PlayerBackgroundType.solidColor) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: OutlinedButton.icon(
+                  onPressed: _showSolidColorPicker,
+                  icon: Icon(
+                    Icons.palette,
+                    color: backgroundService.solidColor,
+                  ),
+                  label: const Text('选择颜色'),
+                ),
+              ),
+            ],
+            
+            const SizedBox(height: 8),
+            
+            // 图片背景
+            RadioListTile<PlayerBackgroundType>(
+              title: const Text('图片背景'),
+              subtitle: Text(
+                backgroundService.imagePath != null
+                    ? '已设置自定义图片'
+                    : '未设置图片',
+              ),
+              value: PlayerBackgroundType.image,
+              groupValue: currentType,
+              onChanged: (value) async {
+                await backgroundService.setBackgroundType(value!);
+                setState(() {});
+                widget.onChanged();
+              },
+            ),
+                
+            // 图片选择和模糊设置（仅在选择图片背景时显示）
+            if (currentType == PlayerBackgroundType.image) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 选择图片按钮
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _selectBackgroundImage,
+                            icon: const Icon(Icons.image),
+                            label: const Text('选择图片'),
+                          ),
+                        ),
+                        if (backgroundService.imagePath != null) ...[
+                          const SizedBox(width: 8),
+                          IconButton(
+                            onPressed: () async {
+                              await backgroundService.clearImageBackground();
+                              setState(() {});
+                              widget.onChanged();
+                            },
+                            icon: const Icon(Icons.clear),
+                            tooltip: '清除图片',
+                          ),
+                        ],
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // 模糊程度调节
+                    Text(
+                      '模糊程度: ${backgroundService.blurAmount.toStringAsFixed(0)}',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    Slider(
+                      value: backgroundService.blurAmount,
+                      min: 0,
+                      max: 50,
+                      divisions: 50,
+                      label: backgroundService.blurAmount.toStringAsFixed(0),
+                      onChanged: (value) async {
+                        await backgroundService.setBlurAmount(value);
+                        setState(() {});
+                        widget.onChanged();
+                      },
+                    ),
+                    Text(
+                      '0 = 清晰，50 = 最模糊',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
+
+  /// 显示纯色选择器
+  Future<void> _showSolidColorPicker() async {
+    final backgroundService = PlayerBackgroundService();
+    Color? selectedColor;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('选择纯色'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 预设颜色
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Colors.grey[900]!,
+                  Colors.black,
+                  Colors.blue[900]!,
+                  Colors.purple[900]!,
+                  Colors.red[900]!,
+                  Colors.green[900]!,
+                  Colors.orange[900]!,
+                  Colors.teal[900]!,
+                ].map((color) => InkWell(
+                  onTap: () {
+                    selectedColor = color;
+                    Navigator.pop(context);
+                  },
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: color == backgroundService.solidColor
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.transparent,
+                        width: 3,
+                      ),
+                    ),
+                  ),
+                )).toList(),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedColor != null) {
+      await backgroundService.setSolidColor(selectedColor!);
+      setState(() {});
+      widget.onChanged();
+    }
+  }
+
+  /// 选择背景图片
+  Future<void> _selectBackgroundImage() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      dialogTitle: '选择背景图片',
+    );
+
+    if (result != null && result.files.single.path != null) {
+      final imagePath = result.files.single.path!;
+      await PlayerBackgroundService().setImageBackground(imagePath);
+      setState(() {});
+      widget.onChanged();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('背景图片已设置'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 }

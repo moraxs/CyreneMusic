@@ -12,6 +12,7 @@ import 'services/cache_service.dart';
 import 'services/permission_service.dart';
 import 'services/url_service.dart';
 import 'services/version_service.dart';
+import 'services/player_background_service.dart';
 
 // 条件导入 SMTC
 import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
@@ -78,6 +79,10 @@ void main() async {
   // 初始化缓存服务
   await CacheService().initialize();
   DeveloperModeService().addLog('💾 缓存服务已初始化');
+  
+  // 初始化播放器背景服务
+  await PlayerBackgroundService().initialize();
+  DeveloperModeService().addLog('🎨 播放器背景服务已初始化');
   
   await PlayerService().initialize();
   DeveloperModeService().addLog('🎵 播放器服务已初始化');
