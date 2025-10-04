@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../utils/theme_manager.dart';
 import '../widgets/custom_color_picker_dialog.dart';
 import '../models/song_detail.dart';
@@ -2324,8 +2325,17 @@ class _PlayerBackgroundDialogState extends State<_PlayerBackgroundDialog> {
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // 预设颜色
+              const Text(
+                '预设颜色',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -2359,6 +2369,21 @@ class _PlayerBackgroundDialogState extends State<_PlayerBackgroundDialog> {
                   ),
                 )).toList(),
               ),
+              
+              const SizedBox(height: 20),
+              
+              // 自定义颜色按钮
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showCustomColorPicker();
+                },
+                icon: const Icon(Icons.palette),
+                label: const Text('自定义颜色'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
             ],
           ),
         ),
@@ -2376,6 +2401,51 @@ class _PlayerBackgroundDialogState extends State<_PlayerBackgroundDialog> {
       setState(() {});
       widget.onChanged();
     }
+  }
+  
+  /// 显示自定义颜色选择器（调色盘）
+  Future<void> _showCustomColorPicker() async {
+    final backgroundService = PlayerBackgroundService();
+    Color pickerColor = backgroundService.solidColor;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('自定义颜色'),
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: pickerColor,
+            onColorChanged: (color) {
+              pickerColor = color;
+            },
+            enableAlpha: false, // 不需要透明度调节
+            displayThumbColor: true,
+            pickerAreaHeightPercent: 0.8,
+            labelTypes: const [
+              ColorLabelType.rgb,
+              ColorLabelType.hsv,
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await backgroundService.setSolidColor(pickerColor);
+              setState(() {});
+              widget.onChanged();
+              if (mounted) {
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 选择背景图片

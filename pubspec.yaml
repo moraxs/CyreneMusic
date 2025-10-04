@@ -81,6 +81,9 @@ dependencies:
   
   # URL launcher for opening update links
   url_launcher: ^6.3.0
+  
+  # Color picker for custom color selection
+  flutter_colorpicker: ^1.1.0
 
 dev_dependencies:
   flutter_test:

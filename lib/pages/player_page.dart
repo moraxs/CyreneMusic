@@ -12,6 +12,7 @@ import '../services/favorite_service.dart';
 import '../services/playlist_service.dart';
 import '../services/playlist_queue_service.dart';
 import '../services/download_service.dart';
+import '../services/player_background_service.dart';
 import '../models/lyric_line.dart';
 import '../models/track.dart';
 import '../models/song_detail.dart';
@@ -449,69 +450,79 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
         borderRadius: _isMaximized 
             ? BorderRadius.zero  // 最大化时无圆角
             : BorderRadius.circular(16), // 正常时圆角窗口
-        child: Stack(
-          children: [
-            // 背景（主题色渐变）- 使用 ValueListenableBuilder 精确监听主题色变化
-            _buildGradientBackground(),
-
-            // 主要内容区域
-            SafeArea(
-              child: Column(
-                children: [
-                  // 可拖动的顶部区域
-                  _buildDraggableTopBar(context),
-                  
-                  // 左右分栏内容区域（静态部分）
-                  Expanded(
-                    child: Row(
-                      children: [
-                        // 左侧：歌曲信息（静态，不随进度更新）
-                        Expanded(
-                          flex: 5,
-                          child: _buildLeftPanel(song, track),
-                        ),
-                        
-                        // 右侧：歌词（使用独立监听）
-                        Expanded(
-                          flex: 4,
-                          child: _buildRightPanel(),
-                        ),
-                      ],
+        child: AnimatedBuilder(
+          animation: PlayerBackgroundService(),
+          builder: (context, child) {
+            return Stack(
+              children: [
+                // 背景层（根据设置显示不同背景）
+                _buildGradientBackground(),
+                
+                // 主要内容区域
+                child!,
+              ],
+            );
+          },
+          child: Stack(
+            children: [
+              SafeArea(
+                child: Column(
+                  children: [
+                    // 可拖动的顶部区域
+                    _buildDraggableTopBar(context),
+                    
+                    // 左右分栏内容区域（静态部分）
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // 左侧：歌曲信息（静态，不随进度更新）
+                          Expanded(
+                            flex: 5,
+                            child: _buildLeftPanel(song, track),
+                          ),
+                          
+                          // 右侧：歌词（使用独立监听）
+                          Expanded(
+                            flex: 4,
+                            child: _buildRightPanel(),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  
-                  // 底部进度条和控制按钮（使用 AnimatedBuilder 监听播放进度）
-                  AnimatedBuilder(
-                    animation: PlayerService(),
-                    builder: (context, child) {
-                      return _buildBottomControls(PlayerService());
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            // 播放列表侧板背景遮罩
-            if (_showPlaylist)
-              GestureDetector(
-                onTap: _togglePlaylist,
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                  child: Container(
-                    color: Colors.black.withOpacity(0.3),
-                  ),
+                    
+                    // 底部进度条和控制按钮（使用 AnimatedBuilder 监听播放进度）
+                    AnimatedBuilder(
+                      animation: PlayerService(),
+                      builder: (context, child) {
+                        return _buildBottomControls(PlayerService());
+                      },
+                    ),
+                  ],
                 ),
               ),
-            
-            // 播放列表内容
-            SlideTransition(
-              position: _playlistSlideAnimation,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: _buildPlaylistPanel(),
+
+              // 播放列表侧板背景遮罩
+              if (_showPlaylist)
+                GestureDetector(
+                  onTap: _togglePlaylist,
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                    child: Container(
+                      color: Colors.black.withOpacity(0.3),
+                    ),
+                  ),
+                ),
+              
+              // 播放列表内容
+              SlideTransition(
+                position: _playlistSlideAnimation,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildPlaylistPanel(),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -629,35 +640,113 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     );
   }
 
-  /// 构建渐变背景（主题色到灰色）
+  /// 构建渐变背景（根据设置选择背景类型）
   Widget _buildGradientBackground() {
+    final backgroundService = PlayerBackgroundService();
     final greyColor = Colors.grey[900] ?? const Color(0xFF212121);
     
-    // 使用 ValueListenableBuilder 精确监听主题色变化，不受播放进度影响
-    return ValueListenableBuilder<Color?>(
-      valueListenable: PlayerService().themeColorNotifier,
-      builder: (context, themeColor, child) {
-        final color = themeColor ?? Colors.deepPurple;
-        print('🎨 [PlayerPage] 构建背景，主题色: $color');
+    switch (backgroundService.backgroundType) {
+      case PlayerBackgroundType.adaptive:
+        // 自适应背景（默认行为）- 使用主题色渐变
+        return ValueListenableBuilder<Color?>(
+          valueListenable: PlayerService().themeColorNotifier,
+          builder: (context, themeColor, child) {
+            final color = themeColor ?? Colors.deepPurple;
+            print('🎨 [PlayerPage] 构建背景，主题色: $color');
+            
+            return RepaintBoundary(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 500), // 主题色变化时平滑过渡
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      color,        // 主题色（不透明）
+                      greyColor,    // 灰色（不透明）
+                    ],
+                    stops: const [0.0, 1.0],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
         
+      case PlayerBackgroundType.solidColor:
+        // 纯色背景（添加到灰色的渐变）
         return RepaintBoundary(
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 500), // 主题色变化时平滑过渡
+            duration: const Duration(milliseconds: 500),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  color,        // 主题色（不透明）
-                  greyColor,    // 灰色（不透明）
+                  backgroundService.solidColor,
+                  greyColor,
                 ],
                 stops: const [0.0, 1.0],
               ),
             ),
           ),
         );
-      },
-    );
+        
+      case PlayerBackgroundType.image:
+        // 图片背景
+        if (backgroundService.imagePath != null) {
+          final imageFile = File(backgroundService.imagePath!);
+          if (imageFile.existsSync()) {
+            return Stack(
+              children: [
+                // 图片层
+                Positioned.fill(
+                  child: Image.file(
+                    imageFile,
+                    fit: BoxFit.cover, // 保持原比例裁剪
+                  ),
+                ),
+                // 模糊层
+                if (backgroundService.blurAmount > 0)
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(
+                        sigmaX: backgroundService.blurAmount,
+                        sigmaY: backgroundService.blurAmount,
+                      ),
+                      child: Container(
+                        color: Colors.black.withOpacity(0.3), // 添加半透明遮罩
+                      ),
+                    ),
+                  )
+                else
+                  // 无模糊时也添加浅色遮罩以确保文字可读
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withOpacity(0.2),
+                    ),
+                  ),
+              ],
+            );
+          }
+        }
+        // 如果没有设置图片，使用默认背景
+        return RepaintBoundary(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  greyColor,
+                  Colors.black,
+                ],
+                stops: const [0.0, 1.0],
+              ),
+            ),
+          ),
+        );
+    }
   }
 
   /// 构建左侧面板（歌曲信息）
