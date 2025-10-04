@@ -1,0 +1,266 @@
+name: Multi-Platform Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      build_android:
+        description: '构建 Android'
+        required: false
+        type: boolean
+        default: true
+      build_windows:
+        description: '构建 Windows'
+        required: false
+        type: boolean
+        default: true
+      build_linux:
+        description: '构建 Linux'
+        required: false
+        type: boolean
+        default: true
+      build_macos:
+        description: '构建 macOS'
+        required: false
+        type: boolean
+        default: true
+      build_ios:
+        description: '构建 iOS'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  # Android 构建
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || inputs.build_android }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Remove Windows-only dependencies
+        run: |
+          # 临时移除 smtc_windows 依赖（仅 Windows 支持）
+          sed -i '/smtc_windows:/d' pubspec.yaml
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release --split-per-abi
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: |
+            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            build/app/outputs/flutter-apk/app-x86_64-release.apk
+
+  # Windows 构建
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    if: ${{ github.event_name == 'push' || inputs.build_windows }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Create Windows archive
+        run: |
+          cd build/windows/x64/runner/Release
+          Compress-Archive -Path * -DestinationPath ../../../../../cyrene_music-windows-x64.zip
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: cyrene_music-windows-x64.zip
+
+  # Linux 构建
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || inputs.build_linux }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Remove Windows-only dependencies
+        run: |
+          # 临时移除 smtc_windows 依赖（仅 Windows 支持）
+          sed -i '/smtc_windows:/d' pubspec.yaml
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Linux
+        run: flutter build linux --release
+
+      - name: Create Linux archive
+        run: |
+          cd build/linux/x64/release
+          tar -czvf ../../../../cyrene_music-linux-x64.tar.gz bundle/
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: cyrene_music-linux-x64.tar.gz
+
+  # macOS 构建
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    if: ${{ github.event_name == 'push' || inputs.build_macos }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Remove Windows-only dependencies
+        run: |
+          # 临时移除 smtc_windows 依赖（仅 Windows 支持）
+          sed -i '' '/smtc_windows:/d' pubspec.yaml
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build macOS
+        run: flutter build macos --release
+
+      - name: Create macOS DMG
+        run: |
+          cd build/macos/Build/Products/Release
+          hdiutil create -volname "Cyrene Music" -srcfolder cyrene_music.app -ov -format UDZO cyrene_music-macos.dmg
+          mv cyrene_music-macos.dmg ../../../../../
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: cyrene_music-macos.dmg
+
+  # iOS 构建
+  build-ios:
+    name: Build iOS
+    runs-on: macos-latest
+    if: ${{ github.event_name == 'push' || inputs.build_ios }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Remove Windows-only dependencies
+        run: |
+          # 临时移除 smtc_windows 依赖（仅 Windows 支持）
+          sed -i '' '/smtc_windows:/d' pubspec.yaml
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build iOS (no-codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Create iOS archive
+        run: |
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r ../../../cyrene_music-ios-unsigned.ipa Payload
+
+      - name: Upload iOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned
+          path: cyrene_music-ios-unsigned.ipa
+
+  # 创建 Release
+  create-release:
+    name: Create Release
+    needs: [build-android, build-windows, build-linux, build-macos, build-ios]
+    runs-on: ubuntu-latest
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/android-apk/*.apk
+            artifacts/windows-x64/*.zip
+            artifacts/linux-x64/*.tar.gz
+            artifacts/macos/*.dmg
+            artifacts/ios-unsigned/*.ipa
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

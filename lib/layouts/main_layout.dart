@@ -4,10 +4,9 @@ import '../widgets/custom_title_bar.dart';
 import '../widgets/mini_player.dart';
 import '../pages/home_page.dart';
 import '../pages/history_page.dart';
-import '../pages/playlists_page.dart';
+import '../pages/my_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/developer_page.dart';
-import '../pages/profile_page.dart';
 import '../services/auth_service.dart';
 import '../services/layout_preference_service.dart';
 import '../services/developer_mode_service.dart';
@@ -32,8 +31,7 @@ class _MainLayoutState extends State<MainLayout> {
     final pages = <Widget>[
       const HomePage(),
       const HistoryPage(),
-      const PlaylistsPage(),
-      const ProfilePage(), // 个人中心
+      const MyPage(), // 我的（歌单+听歌统计）
       const SettingsPage(),
     ];
     
@@ -100,7 +98,7 @@ class _MainLayoutState extends State<MainLayout> {
         if (mounted) {
           setState(() {
             // 如果当前选中的是开发者页面但模式被关闭，切换到首页
-            if (_selectedIndex >= 5 && !DeveloperModeService().isDeveloperMode) {
+            if (_selectedIndex >= 4 && !DeveloperModeService().isDeveloperMode) {
               _selectedIndex = 0;
             }
           });
@@ -151,11 +149,11 @@ class _MainLayoutState extends State<MainLayout> {
             const Divider(),
             ListTile(
               leading: const Icon(Icons.person_outline),
-              title: const Text('个人中心'),
+              title: const Text('我的'),
               onTap: () {
                 Navigator.pop(context);
                 setState(() {
-                  _selectedIndex = 3; // 切换到个人中心
+                  _selectedIndex = 2; // 切换到我的页面
                 });
               },
             ),
@@ -286,7 +284,7 @@ class _MainLayoutState extends State<MainLayout> {
         selectedIndex: _selectedIndex,
         onDestinationSelected: (int index) {
           // 如果点击的是设置按钮，触发开发者模式检测
-          if (index == 4) {
+          if (index == 3) {
             DeveloperModeService().onSettingsClicked();
           }
           
@@ -306,11 +304,6 @@ class _MainLayoutState extends State<MainLayout> {
             icon: Icon(Icons.history_outlined),
             selectedIcon: Icon(Icons.history),
             label: '历史',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.library_music_outlined),
-            selectedIcon: Icon(Icons.library_music),
-            label: '歌单',
           ),
           const NavigationDestination(
             icon: Icon(Icons.person_outlined),
@@ -346,7 +339,7 @@ class _MainLayoutState extends State<MainLayout> {
       selectedIndex: _selectedIndex,
       onDestinationSelected: (int index) {
         // 如果点击的是设置按钮，触发开发者模式检测
-        if (index == 4) {
+        if (index == 3) {
           DeveloperModeService().onSettingsClicked();
         }
         
@@ -381,11 +374,6 @@ class _MainLayoutState extends State<MainLayout> {
             icon: Icon(Icons.history_outlined),
             selectedIcon: Icon(Icons.history),
             label: Text('历史'),
-          ),
-          const NavigationRailDestination(
-            icon: Icon(Icons.library_music_outlined),
-            selectedIcon: Icon(Icons.library_music),
-            label: Text('歌单'),
           ),
           const NavigationRailDestination(
             icon: Icon(Icons.person_outlined),

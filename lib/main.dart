@@ -16,8 +16,8 @@ import 'services/player_background_service.dart';
 import 'services/persistent_storage_service.dart';
 import 'services/listening_stats_service.dart';
 
-// 条件导入 SMTC
-import 'package:smtc_windows/smtc_windows.dart' if (dart.library.html) '';
+// 条件导入 SMTC（通过平台抽象层）
+import 'services/smtc_platform.dart';
 
 // 条件导入 flutter_displaymode（仅 Android）
 import 'package:flutter_displaymode/flutter_displaymode.dart' if (dart.library.html) '';
