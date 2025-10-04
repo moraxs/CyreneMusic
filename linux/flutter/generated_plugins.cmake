@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_linux
   bitsdojo_window_linux
+  dynamic_color
   screen_retriever_linux
   tray_manager
   url_launcher_linux

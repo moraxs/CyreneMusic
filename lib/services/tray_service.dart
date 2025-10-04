@@ -1,9 +1,10 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 import 'player_service.dart';
 import 'system_media_service.dart';
+import 'persistent_storage_service.dart';
+import 'listening_stats_service.dart';
 
 /// 系统托盘服务
 /// 仅支持 Windows/macOS/Linux 桌面平台
@@ -265,6 +266,29 @@ class TrayService with TrayListener, WindowListener {
   /// 清理资源并退出
   Future<void> _cleanupAndExit() async {
     try {
+      // 0. 同步听歌时长（在退出前保存统计数据）
+      print('📊 [TrayService] 同步听歌时长...');
+      try {
+        await ListeningStatsService().syncBeforeExit();
+        print('✅ [TrayService] 听歌时长已同步');
+      } catch (e) {
+        print('⚠️ [TrayService] 同步听歌时长失败: $e');
+      }
+      
+      // 1. 然后强制备份所有数据（最重要！）
+      print('💾 [TrayService] 强制备份应用数据...');
+      try {
+        await PersistentStorageService().forceBackup().timeout(
+          const Duration(milliseconds: 300),
+          onTimeout: () {
+            print('⚠️ [TrayService] 数据备份超时(300ms)');
+          },
+        );
+        print('✅ [TrayService] 应用数据备份完成');
+      } catch (e) {
+        print('❌ [TrayService] 数据备份失败: $e');
+      }
+      
       // 1. 立即清理系统媒体控件（会移除监听器，停止更新）
       print('🎛️ [TrayService] 清理系统媒体控件...');
       SystemMediaService().dispose();

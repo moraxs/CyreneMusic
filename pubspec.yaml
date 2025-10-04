@@ -64,6 +64,10 @@ dependencies:
   # File picker for directory selection
   file_picker: ^8.0.0
   
+  # Path utilities for file operations
+  path: ^1.9.0
+  path_provider: ^2.1.5
+  
   # HTTP server for local proxy
   shelf: ^1.4.0
   
@@ -84,6 +88,9 @@ dependencies:
   
   # Color picker for custom color selection
   flutter_colorpicker: ^1.1.0
+  
+  # Dynamic color (Material You) support for Android 12+
+  dynamic_color: ^1.7.0
 
 dev_dependencies:
   flutter_test:

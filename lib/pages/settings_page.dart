@@ -186,11 +186,27 @@ class _SettingsPageState extends State<SettingsPage> {
                     },
                   ),
                   const Divider(height: 1),
+                  _buildSwitchTile(
+                    title: '跟随系统主题色',
+                    subtitle: _getFollowSystemColorSubtitle(),
+                    icon: Icons.auto_awesome,
+                    value: ThemeManager().followSystemColor,
+                    onChanged: (value) async {
+                      await ThemeManager().setFollowSystemColor(value, context: context);
+                      setState(() {});
+                    },
+                  ),
+                  const Divider(height: 1),
                   _buildListTile(
                     title: '主题色',
                     subtitle: _getCurrentThemeColorName(),
                     icon: Icons.color_lens,
-                    onTap: () => _showThemeColorPicker(),
+                    onTap: ThemeManager().followSystemColor 
+                        ? null  // 跟随系统主题色时禁用手动选择
+                        : () => _showThemeColorPicker(),
+                    trailing: ThemeManager().followSystemColor
+                        ? Icon(Icons.lock_outline, color: Theme.of(context).disabledColor)
+                        : null,
                   ),
                   const Divider(height: 1),
                   _buildListTile(
@@ -347,14 +363,16 @@ class _SettingsPageState extends State<SettingsPage> {
     required String title,
     required String subtitle,
     required IconData icon,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
+    Widget? trailing,
   }) {
     return ListTile(
       leading: Icon(icon),
       title: Text(title),
       subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: trailing ?? (onTap != null ? const Icon(Icons.chevron_right) : null),
       onTap: onTap,
+      enabled: onTap != null,
     );
   }
 
@@ -377,8 +395,25 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// 获取当前主题色名称
   String _getCurrentThemeColorName() {
+    if (ThemeManager().followSystemColor) {
+      return '${ThemeManager().getThemeColorSource()} (当前跟随系统)';
+    }
     final currentIndex = ThemeManager().getCurrentColorIndex();
     return ThemeColors.presets[currentIndex].name;
+  }
+
+  /// 获取跟随系统主题色的副标题
+  String _getFollowSystemColorSubtitle() {
+    if (ThemeManager().followSystemColor) {
+      if (Platform.isAndroid) {
+        return '自动获取 Material You 动态颜色 (Android 12+)';
+      } else if (Platform.isWindows) {
+        return '从系统个性化设置读取强调色';
+      }
+      return '自动跟随系统主题色';
+    } else {
+      return '手动选择主题色';
+    }
   }
 
   /// 显示主题色选择器
