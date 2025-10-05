@@ -2226,6 +2226,33 @@ class _PlayerBackgroundDialogState extends State<_PlayerBackgroundDialog> {
               },
             ),
             
+            // 渐变开关（仅在自适应背景时显示）
+            if (currentType == PlayerBackgroundType.adaptive) ...[
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+                child: SwitchListTile(
+                  title: const Text('封面渐变效果'),
+                  subtitle: Text(
+                    Platform.isWindows || Platform.isMacOS || Platform.isLinux
+                        ? '专辑封面位于左侧，向右渐变到主题色'
+                        : '专辑封面位于顶部，向下渐变到主题色',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
+                  ),
+                  value: backgroundService.enableGradient,
+                  onChanged: (value) async {
+                    await backgroundService.setEnableGradient(value);
+                    setState(() {});
+                    widget.onChanged();
+                  },
+                  secondary: const Icon(Icons.gradient),
+                  contentPadding: const EdgeInsets.only(left: 40, right: 16),
+                ),
+              ),
+            ],
+            
             // 纯色背景
             RadioListTile<PlayerBackgroundType>(
               title: const Text('纯色背景'),

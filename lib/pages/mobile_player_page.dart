@@ -221,25 +221,35 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
                   // 歌曲信息区域 - 使用 Expanded 让它占据剩余空间
                   Expanded(
                     child: SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          SizedBox(height: screenHeight * 0.015),
+                      child: Builder(
+                        builder: (context) {
+                          final backgroundService = PlayerBackgroundService();
+                          final showCover = !backgroundService.enableGradient || 
+                                          backgroundService.backgroundType != PlayerBackgroundType.adaptive;
                           
-                          // 封面
-                          _buildAlbumCover(song, track),
-                          
-                          SizedBox(height: screenHeight * 0.02),
-                          
-                          // 歌曲名称和歌手
-                          _buildSongInfo(song, track),
-                          
-                          SizedBox(height: screenHeight * 0.015),
-                          
-                          // 当前歌词（单行，可点击）
-                          _buildCurrentLyric(),
-                          
-                          SizedBox(height: screenHeight * 0.02),
-                        ],
+                          return Column(
+                            children: [
+                              SizedBox(height: screenHeight * 0.015),
+                              
+                              // 封面（开启渐变效果时不显示，因为封面已在背景中）
+                              if (showCover)
+                                _buildAlbumCover(song, track),
+                              
+                              if (showCover)
+                                SizedBox(height: screenHeight * 0.02),
+                              
+                              // 歌曲名称和歌手
+                              _buildSongInfo(song, track),
+                              
+                              SizedBox(height: screenHeight * 0.015),
+                              
+                              // 当前歌词（单行，可点击）
+                              _buildCurrentLyric(),
+                              
+                              SizedBox(height: screenHeight * 0.02),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -271,20 +281,85 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
     
     switch (backgroundService.backgroundType) {
       case PlayerBackgroundType.adaptive:
-        // 自适应背景（默认行为）
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                Colors.black,
-                Colors.black,
-              ],
+        // 自适应背景 - 检查是否启用封面渐变效果
+        if (backgroundService.enableGradient) {
+          // 新样式：专辑封面渐变效果（移动端：顶部封面，向下渐变）
+          final imageUrl = song?.pic ?? track?.picUrl ?? '';
+          
+          return ValueListenableBuilder<Color?>(
+            valueListenable: PlayerService().themeColorNotifier,
+            builder: (context, themeColor, child) {
+              final color = themeColor ?? Theme.of(context).colorScheme.primaryContainer;
+              
+               return Stack(
+                 children: [
+                   // 底层纯主题色背景
+                   Positioned.fill(
+                     child: AnimatedContainer(
+                       duration: const Duration(milliseconds: 500),
+                       color: color,
+                     ),
+                   ),
+                   
+                   // 专辑封面层 - 等比例放大至占满宽度，位于顶部
+                   if (imageUrl.isNotEmpty)
+                     Positioned(
+                       left: 0,
+                       right: 0,
+                       top: 0,
+                       child: AspectRatio(
+                         aspectRatio: 1.0, // 保持正方形比例
+                         child: CachedNetworkImage(
+                           imageUrl: imageUrl,
+                           fit: BoxFit.cover,
+                           placeholder: (context, url) => Container(
+                             color: Colors.grey[900],
+                           ),
+                           errorWidget: (context, url, error) => Container(
+                             color: Colors.grey[900],
+                           ),
+                         ),
+                       ),
+                     ),
+                   
+                   // 渐变遮罩层 - 从封面到主题色的渐变
+                   Positioned.fill(
+                     child: AnimatedContainer(
+                       duration: const Duration(milliseconds: 500),
+                       decoration: BoxDecoration(
+                         gradient: LinearGradient(
+                           begin: Alignment.topCenter,
+                           end: Alignment.bottomCenter,
+                           colors: [
+                             Colors.transparent,        // 顶部透明，显示封面
+                             color.withOpacity(0.3),    // 中间逐渐显示主题色
+                             Colors.transparent,         // 底部透明，显示底层主题色
+                           ],
+                           stops: const [0.0, 0.4, 1.0],
+                         ),
+                       ),
+                     ),
+                   ),
+                 ],
+               );
+            },
+          );
+        } else {
+          // 原有样式：纯色渐变
+          return Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                  Colors.black,
+                  Colors.black,
+                ],
+              ),
             ),
-          ),
-        );
+          );
+        }
         
       case PlayerBackgroundType.solidColor:
         // 纯色背景（添加到灰色的渐变）
