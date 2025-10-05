@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart' as ap;
@@ -20,6 +21,7 @@ import 'playlist_queue_service.dart';
 import 'audio_quality_service.dart';
 import 'listening_stats_service.dart';
 import 'desktop_lyric_service.dart';
+import 'player_background_service.dart';
 import 'dart:async' as async_lib;
 
 /// 播放状态枚举
@@ -333,40 +335,124 @@ class PlayerService extends ChangeNotifier {
 
   /// 后台提取主题色（为播放器页面预加载）
   Future<void> _extractThemeColorInBackground(String imageUrl) async {
-    if (imageUrl.isEmpty) return;
+    if (imageUrl.isEmpty) {
+      // 如果没有图片URL，设置一个默认颜色
+      themeColorNotifier.value = Colors.deepPurple;
+      return;
+    }
 
     try {
-      // 检查缓存
-      if (_themeColorCache.containsKey(imageUrl)) {
-        final cachedColor = _themeColorCache[imageUrl];
-        themeColorNotifier.value = cachedColor; // 更新 ValueNotifier
+      // 检查缓存（为移动端渐变模式添加特殊缓存键）
+      final backgroundService = PlayerBackgroundService();
+      final isMobileGradientMode = Platform.isAndroid && 
+                                   backgroundService.enableGradient &&
+                                   backgroundService.backgroundType == PlayerBackgroundType.adaptive;
+      final cacheKey = isMobileGradientMode ? '${imageUrl}_bottom' : imageUrl;
+      
+      if (_themeColorCache.containsKey(cacheKey)) {
+        final cachedColor = _themeColorCache[cacheKey];
+        themeColorNotifier.value = cachedColor;
         print('🎨 [PlayerService] 使用缓存的主题色: $cachedColor');
         return;
       }
 
-      print('🎨 [PlayerService] 开始提取主题色...');
+      print('🎨 [PlayerService] 开始提取主题色${isMobileGradientMode ? '（从封面底部）' : ''}...');
       
-      // 使用 CachedNetworkImageProvider 利用已缓存的图片
+      Color? themeColor;
+      
+      // 移动端渐变模式：从封面底部区域提取颜色
+      if (isMobileGradientMode) {
+        themeColor = await _extractColorFromBottomRegion(imageUrl);
+      } else {
+        // 其他模式：从整张图片提取颜色
+        themeColor = await _extractColorFromFullImage(imageUrl);
+      }
+
+      // 如果仍然无法提取颜色，使用默认值
+      if (themeColor == null) {
+        print('⚠️ [PlayerService] 无法从封面提取颜色，使用默认颜色');
+        themeColor = Colors.deepPurple;
+      }
+
+      _themeColorCache[cacheKey] = themeColor;
+      themeColorNotifier.value = themeColor;
+      print('✅ [PlayerService] 主题色提取完成: $themeColor');
+    } catch (e) {
+      print('⚠️ [PlayerService] 主题色提取失败: $e');
+      final defaultColor = Colors.deepPurple;
+      themeColorNotifier.value = defaultColor;
+      print('🎨 [PlayerService] 使用默认主题色: $defaultColor');
+    }
+  }
+
+  /// 从整张图片提取主题色
+  Future<Color?> _extractColorFromFullImage(String imageUrl) async {
+    final imageProvider = CachedNetworkImageProvider(imageUrl);
+    final timeout = Platform.isAndroid 
+        ? const Duration(seconds: 5) 
+        : const Duration(seconds: 2);
+    
+    final paletteGenerator = await PaletteGenerator.fromImageProvider(
+      imageProvider,
+      maximumColorCount: Platform.isAndroid ? 16 : 12,
+      timeout: timeout,
+    );
+
+    return paletteGenerator.vibrantColor?.color ?? 
+           paletteGenerator.dominantColor?.color ??
+           paletteGenerator.darkVibrantColor?.color ??
+           paletteGenerator.lightVibrantColor?.color ??
+           paletteGenerator.mutedColor?.color;
+  }
+
+  /// 从图片底部区域提取主题色（用于移动端渐变模式）
+  Future<Color?> _extractColorFromBottomRegion(String imageUrl) async {
+    try {
       final imageProvider = CachedNetworkImageProvider(imageUrl);
+      
+      // 加载图片
+      final imageStream = imageProvider.resolve(const ImageConfiguration());
+      final completer = async_lib.Completer<ui.Image>();
+      late ImageStreamListener listener;
+      
+      listener = ImageStreamListener((ImageInfo info, bool _) {
+        completer.complete(info.image);
+        imageStream.removeListener(listener);
+      }, onError: (exception, stackTrace) {
+        completer.completeError(exception, stackTrace);
+        imageStream.removeListener(listener);
+      });
+      
+      imageStream.addListener(listener);
+      final image = await completer.future.timeout(const Duration(seconds: 5));
+      
+      // 计算底部区域（底部 30%）
+      final width = image.width;
+      final height = image.height;
+      final bottomHeight = (height * 0.3).toInt();
+      final topOffset = height - bottomHeight;
+      
+      // 创建一个自定义的 ImageProvider 用于底部区域
+      final region = Rect.fromLTWH(0, topOffset.toDouble(), width.toDouble(), bottomHeight.toDouble());
+      
+      // 对底部区域进行颜色提取
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
         imageProvider,
-        maximumColorCount: 12, // 进一步减少采样数，提升速度
-        timeout: const Duration(seconds: 2), // 缩短超时时间
+        region: region,
+        maximumColorCount: 20, // 增加采样数以获得更准确的底部颜色
+        timeout: const Duration(seconds: 5),
       );
 
-      // 优先使用鲜艳色，其次使用主色调
-      final themeColor = paletteGenerator.vibrantColor?.color ?? 
-                        paletteGenerator.dominantColor?.color ??
-                        paletteGenerator.darkVibrantColor?.color;
-
-      if (themeColor != null) {
-        _themeColorCache[imageUrl] = themeColor; // 缓存主题色
-        themeColorNotifier.value = themeColor;   // 更新 ValueNotifier（只触发背景重建）
-        print('✅ [PlayerService] 主题色提取完成: $themeColor');
-      }
+      print('🎨 [PlayerService] 从底部区域提取颜色（区域: ${region.toString()}）');
+      
+      return paletteGenerator.vibrantColor?.color ?? 
+             paletteGenerator.dominantColor?.color ??
+             paletteGenerator.darkVibrantColor?.color ??
+             paletteGenerator.lightVibrantColor?.color ??
+             paletteGenerator.mutedColor?.color;
     } catch (e) {
-      print('⚠️ [PlayerService] 主题色提取失败（不影响播放）: $e');
-      // 主题色提取失败不影响播放
+      print('⚠️ [PlayerService] 从底部区域提取颜色失败: $e，回退到全图提取');
+      return _extractColorFromFullImage(imageUrl);
     }
   }
 

@@ -220,37 +220,61 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
                   
                   // 歌曲信息区域 - 使用 Expanded 让它占据剩余空间
                   Expanded(
-                    child: SingleChildScrollView(
-                      child: Builder(
-                        builder: (context) {
-                          final backgroundService = PlayerBackgroundService();
-                          final showCover = !backgroundService.enableGradient || 
-                                          backgroundService.backgroundType != PlayerBackgroundType.adaptive;
-                          
+                    child: Builder(
+                      builder: (context) {
+                        final backgroundService = PlayerBackgroundService();
+                        final showCover = !backgroundService.enableGradient || 
+                                        backgroundService.backgroundType != PlayerBackgroundType.adaptive;
+                        final isGradientMode = backgroundService.enableGradient && 
+                                              backgroundService.backgroundType == PlayerBackgroundType.adaptive;
+                        
+                        // 开启渐变模式时，使用不同的布局
+                        if (isGradientMode) {
                           return Column(
                             children: [
-                              SizedBox(height: screenHeight * 0.015),
+                              // 顶部占位空间 - 对应封面区域，让歌曲信息位于封面底部附近
+                              Spacer(flex: 3),
                               
-                              // 封面（开启渐变效果时不显示，因为封面已在背景中）
-                              if (showCover)
-                                _buildAlbumCover(song, track),
-                              
-                              if (showCover)
-                                SizedBox(height: screenHeight * 0.02),
-                              
-                              // 歌曲名称和歌手
+                              // 歌曲名称和歌手 - 位于封面底部到主题色过渡区域
                               _buildSongInfo(song, track),
                               
-                              SizedBox(height: screenHeight * 0.015),
+                              SizedBox(height: screenHeight * 0.03),
                               
-                              // 当前歌词（单行，可点击）
+                              // 当前歌词（单行，可点击）- 确保位于主题色区域
                               _buildCurrentLyric(),
                               
-                              SizedBox(height: screenHeight * 0.02),
+                              // 底部占位空间
+                              Spacer(flex: 2),
                             ],
                           );
-                        },
-                      ),
+                        } else {
+                          // 未开启渐变时的原有布局
+                          return SingleChildScrollView(
+                            child: Column(
+                              children: [
+                                SizedBox(height: screenHeight * 0.015),
+                                
+                                // 封面（开启渐变效果时不显示，因为封面已在背景中）
+                                if (showCover)
+                                  _buildAlbumCover(song, track),
+                                
+                                if (showCover)
+                                  SizedBox(height: screenHeight * 0.02),
+                                
+                                // 歌曲名称和歌手
+                                _buildSongInfo(song, track),
+                                
+                                SizedBox(height: screenHeight * 0.015),
+                                
+                                // 当前歌词（单行，可点击）
+                                _buildCurrentLyric(),
+                                
+                                SizedBox(height: screenHeight * 0.02),
+                              ],
+                            ),
+                          );
+                        }
+                      },
                     ),
                   ),
                   
@@ -289,7 +313,8 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
           return ValueListenableBuilder<Color?>(
             valueListenable: PlayerService().themeColorNotifier,
             builder: (context, themeColor, child) {
-              final color = themeColor ?? Theme.of(context).colorScheme.primaryContainer;
+              // 确保总是有颜色显示，优先使用提取的主题色，回退到深紫色
+              final color = themeColor ?? Colors.deepPurple;
               
                return Stack(
                  children: [
@@ -297,11 +322,11 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
                    Positioned.fill(
                      child: AnimatedContainer(
                        duration: const Duration(milliseconds: 500),
-                       color: color,
+                       color: color,  // 整个背景使用主题色
                      ),
                    ),
                    
-                   // 专辑封面层 - 等比例放大至占满宽度，位于顶部
+                   // 专辑封面层 - 等比例放大至占满宽度，位于顶部，带渐变融合效果
                    if (imageUrl.isNotEmpty)
                      Positioned(
                        left: 0,
@@ -309,55 +334,69 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
                        top: 0,
                        child: AspectRatio(
                          aspectRatio: 1.0, // 保持正方形比例
-                         child: CachedNetworkImage(
-                           imageUrl: imageUrl,
-                           fit: BoxFit.cover,
-                           placeholder: (context, url) => Container(
-                             color: Colors.grey[900],
-                           ),
-                           errorWidget: (context, url, error) => Container(
-                             color: Colors.grey[900],
-                           ),
-                         ),
-                       ),
-                     ),
-                   
-                   // 渐变遮罩层 - 从封面到主题色的渐变
-                   Positioned.fill(
-                     child: AnimatedContainer(
-                       duration: const Duration(milliseconds: 500),
-                       decoration: BoxDecoration(
-                         gradient: LinearGradient(
-                           begin: Alignment.topCenter,
-                           end: Alignment.bottomCenter,
-                           colors: [
-                             Colors.transparent,        // 顶部透明，显示封面
-                             color.withOpacity(0.3),    // 中间逐渐显示主题色
-                             Colors.transparent,         // 底部透明，显示底层主题色
+                         child: Stack(
+                           children: [
+                             // 封面图片
+                             CachedNetworkImage(
+                               imageUrl: imageUrl,
+                               fit: BoxFit.cover,
+                               placeholder: (context, url) => Container(
+                                 color: Colors.grey[900],
+                               ),
+                               errorWidget: (context, url, error) => Container(
+                                 color: Colors.grey[900],
+                               ),
+                             ),
+                             // 封面底部渐变遮罩 - 让封面底部平滑过渡到主题色
+                             Positioned.fill(
+                               child: AnimatedContainer(
+                                 duration: const Duration(milliseconds: 500),
+                                 decoration: BoxDecoration(
+                                   gradient: LinearGradient(
+                                     begin: Alignment.topCenter,
+                                     end: Alignment.bottomCenter,
+                                     colors: [
+                                       Colors.transparent,       // 顶部透明，显示原封面
+                                       Colors.transparent,       // 中上部透明
+                                       color.withOpacity(0.2),   // 中下部开始融合主题色
+                                       color.withOpacity(0.5),   // 底部融合更多主题色
+                                       color,                    // 最底部完全融入主题色
+                                     ],
+                                     stops: const [0.0, 0.4, 0.7, 0.9, 1.0],
+                                   ),
+                                 ),
+                               ),
+                             ),
                            ],
-                           stops: const [0.0, 0.4, 1.0],
                          ),
                        ),
                      ),
-                   ),
                  ],
                );
             },
           );
         } else {
-          // 原有样式：纯色渐变
-          return Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                  Colors.black,
-                  Colors.black,
-                ],
-              ),
-            ),
+          // 原有样式：纯色渐变（也使用提取的主题色）
+          return ValueListenableBuilder<Color?>(
+            valueListenable: PlayerService().themeColorNotifier,
+            builder: (context, themeColor, child) {
+              // 使用提取的主题色，回退到深紫色
+              final color = themeColor ?? Colors.deepPurple;
+              
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      color.withOpacity(0.3),
+                      Colors.black,
+                      Colors.black,
+                    ],
+                  ),
+                ),
+              );
+            },
           );
         }
         
@@ -715,30 +754,17 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
           },
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Flexible(
-                  child: Text(
-                    lyricText,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: lyricFontSize,
-                      fontWeight: FontWeight.w500,
-                      fontFamily: 'Microsoft YaHei',
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Icon(
-                  Icons.keyboard_arrow_right,
-                  color: Colors.white.withOpacity(0.5),
-                  size: 20,
-                ),
-              ],
+            child: Text(
+              lyricText,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: lyricFontSize,
+                fontWeight: FontWeight.w500,
+                fontFamily: 'Microsoft YaHei',
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         );
