@@ -734,15 +734,39 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
                         bottom: 0,
                         child: AspectRatio(
                           aspectRatio: 1.0, // 保持正方形比例
-                          child: CachedNetworkImage(
-                            imageUrl: imageUrl,
-                            fit: BoxFit.cover,
-                            placeholder: (context, url) => Container(
-                              color: greyColor,
-                            ),
-                            errorWidget: (context, url, error) => Container(
-                              color: greyColor,
-                            ),
+                          child: Stack(
+                            children: [
+                              // 封面图片
+                              CachedNetworkImage(
+                                imageUrl: imageUrl,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Container(
+                                  color: greyColor,
+                                ),
+                                errorWidget: (context, url, error) => Container(
+                                  color: greyColor,
+                                ),
+                              ),
+                              // 封面右侧渐变遮罩 - 让封面边缘自然融入背景
+                              Positioned.fill(
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 500),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.centerLeft,
+                                      end: Alignment.centerRight,
+                                      colors: [
+                                        Colors.transparent,  // 左侧和中间保持透明，显示封面
+                                        Colors.transparent,
+                                        color.withOpacity(0.3),  // 右侧开始融合主题色
+                                        color.withOpacity(0.7),  // 最右侧更多主题色
+                                      ],
+                                      stops: const [0.0, 0.6, 0.85, 1.0],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
