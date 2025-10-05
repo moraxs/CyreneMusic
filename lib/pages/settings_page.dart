@@ -18,6 +18,7 @@ import '../services/audio_quality_service.dart';
 import '../services/version_service.dart';
 import '../services/player_background_service.dart';
 import '../pages/auth/login_page.dart';
+import '../widgets/desktop_lyric_settings.dart';
 
 /// 设置页面
 class SettingsPage extends StatefulWidget {
@@ -228,6 +229,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 ]),
                 
                 const SizedBox(height: 24),
+                
+                // Windows 平台显示桌面歌词设置
+                if (Platform.isWindows) ...[
+                  _buildSectionTitle('桌面歌词'),
+                  const DesktopLyricSettings(),
+                  const SizedBox(height: 24),
+                ],
                 
                 // 播放设置
                 _buildSectionTitle('播放'),

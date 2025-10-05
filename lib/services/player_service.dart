@@ -9,6 +9,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:palette_generator/palette_generator.dart';
 import '../models/song_detail.dart';
 import '../models/track.dart';
+import '../models/lyric_line.dart';
+import '../utils/lyric_parser.dart';
 import 'music_service.dart';
 import 'cache_service.dart';
 import 'proxy_service.dart';
@@ -17,6 +19,7 @@ import 'playback_mode_service.dart';
 import 'playlist_queue_service.dart';
 import 'audio_quality_service.dart';
 import 'listening_stats_service.dart';
+import 'desktop_lyric_service.dart';
 import 'dart:async' as async_lib;
 
 /// 播放状态枚举
@@ -50,6 +53,10 @@ class PlayerService extends ChangeNotifier {
   async_lib.Timer? _statsTimer; // 统计定时器
   DateTime? _playStartTime; // 播放开始时间
   int _sessionListeningTime = 0; // 当前会话累积的听歌时长
+
+  // 桌面歌词相关
+  List<LyricLine> _lyrics = [];
+  int _currentLyricIndex = -1;
 
   PlayerState get state => _state;
   SongDetail? get currentSong => _currentSong;
@@ -94,6 +101,7 @@ class PlayerService extends ChangeNotifier {
     // 监听播放进度
     _audioPlayer.onPositionChanged.listen((position) {
       _position = position;
+      _updateDesktopLyric(); // 更新桌面歌词
       notifyListeners();
     });
 
@@ -171,6 +179,9 @@ class PlayerService extends ChangeNotifier {
           // 🔧 立即通知监听器，确保 PlayerPage 能获取到包含歌词的 currentSong
           notifyListeners();
           print('✅ [PlayerService] 已更新 currentSong（从缓存，包含歌词）');
+          
+          // 加载桌面歌词
+          _loadLyricsForDesktop();
 
           // 播放缓存文件
           await _audioPlayer.play(ap.DeviceFileSource(cachedFilePath));
@@ -217,6 +228,9 @@ class PlayerService extends ChangeNotifier {
       // 🔧 修复：立即通知监听器，让 PlayerPage 能获取到包含歌词的 currentSong
       notifyListeners();
       print('✅ [PlayerService] 已更新 currentSong 并通知监听器（包含歌词）');
+      
+      // 加载桌面歌词
+      _loadLyricsForDesktop();
 
       // 3. 播放音乐
       if (track.source == MusicSource.qq || track.source == MusicSource.kugou) {
@@ -716,6 +730,91 @@ class PlayerService extends ChangeNotifier {
     }
     // 否则检查播放历史
     return PlayHistoryService().history.length >= 2;
+  }
+
+  /// 加载桌面歌词（Windows平台）
+  void _loadLyricsForDesktop() {
+    if (!Platform.isWindows) return;
+    
+    final currentSong = _currentSong;
+    if (currentSong == null || currentSong.lyric.isEmpty) {
+      print('📝 [PlayerService] 桌面歌词：无歌词可显示');
+      _lyrics = [];
+      _currentLyricIndex = -1;
+      
+      // 清空桌面歌词显示
+      if (DesktopLyricService().isVisible) {
+        DesktopLyricService().setLyricText('');
+      }
+      return;
+    }
+
+    try {
+      // 根据音乐来源选择不同的解析器
+      switch (currentSong.source.name) {
+        case 'netease':
+          _lyrics = LyricParser.parseNeteaseLyric(
+            currentSong.lyric,
+            translation: currentSong.tlyric.isNotEmpty ? currentSong.tlyric : null,
+          );
+          break;
+        case 'qq':
+          _lyrics = LyricParser.parseQQLyric(
+            currentSong.lyric,
+            translation: currentSong.tlyric.isNotEmpty ? currentSong.tlyric : null,
+          );
+          break;
+        case 'kugou':
+          _lyrics = LyricParser.parseKugouLyric(
+            currentSong.lyric,
+            translation: currentSong.tlyric.isNotEmpty ? currentSong.tlyric : null,
+          );
+          break;
+        default:
+          _lyrics = LyricParser.parseNeteaseLyric(
+            currentSong.lyric,
+            translation: currentSong.tlyric.isNotEmpty ? currentSong.tlyric : null,
+          );
+      }
+
+      _currentLyricIndex = -1;
+      print('🎵 [PlayerService] 桌面歌词已加载: ${_lyrics.length} 行');
+      
+      // 立即更新当前歌词
+      _updateDesktopLyric();
+    } catch (e) {
+      print('❌ [PlayerService] 桌面歌词加载失败: $e');
+      _lyrics = [];
+      _currentLyricIndex = -1;
+    }
+  }
+
+  /// 更新桌面歌词显示
+  void _updateDesktopLyric() {
+    if (!Platform.isWindows) return;
+    if (_lyrics.isEmpty) return;
+    if (!DesktopLyricService().isVisible) return;
+
+    try {
+      final newIndex = LyricParser.findCurrentLineIndex(_lyrics, _position);
+
+      if (newIndex != _currentLyricIndex && newIndex >= 0) {
+        _currentLyricIndex = newIndex;
+        final currentLine = _lyrics[newIndex];
+        
+        // 构建显示文本（如果有翻译则显示原文 + 翻译）
+        String displayText = currentLine.text;
+        if (currentLine.translation != null && currentLine.translation!.isNotEmpty) {
+          displayText = '${currentLine.text}\n${currentLine.translation}';
+        }
+        
+        // 更新桌面歌词
+        DesktopLyricService().setLyricText(displayText);
+      }
+    } catch (e) {
+      // 忽略更新错误，不影响播放
+      print('⚠️ [PlayerService] 桌面歌词更新失败: $e');
+    }
   }
 }
 

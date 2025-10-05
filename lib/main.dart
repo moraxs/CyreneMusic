@@ -15,6 +15,7 @@ import 'services/version_service.dart';
 import 'services/player_background_service.dart';
 import 'services/persistent_storage_service.dart';
 import 'services/listening_stats_service.dart';
+import 'services/desktop_lyric_service.dart';
 
 // 条件导入 SMTC（通过平台抽象层）
 import 'services/smtc_platform.dart';
@@ -131,6 +132,12 @@ void main() async {
   // 初始化听歌统计服务
   ListeningStatsService().initialize();
   DeveloperModeService().addLog('📊 听歌统计服务已初始化');
+  
+  // 初始化桌面歌词服务（仅Windows）
+  if (Platform.isWindows) {
+    await DesktopLyricService().initialize();
+    DeveloperModeService().addLog('🎤 桌面歌词服务已初始化');
+  }
   
   runApp(const MyApp());
   
