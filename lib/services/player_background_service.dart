@@ -20,18 +20,21 @@ class PlayerBackgroundService extends ChangeNotifier {
   static const String _keySolidColor = 'player_background_solid_color';
   static const String _keyImagePath = 'player_background_image_path';
   static const String _keyBlurAmount = 'player_background_blur_amount';
+  static const String _keyEnableGradient = 'player_background_enable_gradient';
 
   // 当前设置
   PlayerBackgroundType _backgroundType = PlayerBackgroundType.adaptive;
   Color _solidColor = Colors.grey[900]!;
   String? _imagePath;
   double _blurAmount = 10.0; // 默认模糊程度（sigma值）
+  bool _enableGradient = false; // 是否启用封面渐变效果
 
   // Getters
   PlayerBackgroundType get backgroundType => _backgroundType;
   Color get solidColor => _solidColor;
   String? get imagePath => _imagePath;
   double get blurAmount => _blurAmount;
+  bool get enableGradient => _enableGradient;
   bool get isAdaptive => _backgroundType == PlayerBackgroundType.adaptive;
   bool get isSolidColor => _backgroundType == PlayerBackgroundType.solidColor;
   bool get isImage => _backgroundType == PlayerBackgroundType.image;
@@ -56,8 +59,11 @@ class PlayerBackgroundService extends ChangeNotifier {
     // 读取模糊程度
     _blurAmount = prefs.getDouble(_keyBlurAmount) ?? 10.0;
     
+    // 读取渐变开关
+    _enableGradient = prefs.getBool(_keyEnableGradient) ?? false;
+    
     notifyListeners();
-    print('🎨 [PlayerBackground] 已初始化: $_backgroundType, 模糊: $_blurAmount');
+    print('🎨 [PlayerBackground] 已初始化: $_backgroundType, 模糊: $_blurAmount, 渐变: $_enableGradient');
   }
 
   /// 设置背景类型
@@ -133,6 +139,18 @@ class PlayerBackgroundService extends ChangeNotifier {
       case PlayerBackgroundType.image:
         return '图片背景';
     }
+  }
+
+  /// 设置渐变开关
+  Future<void> setEnableGradient(bool enabled) async {
+    if (_enableGradient == enabled) return;
+    
+    _enableGradient = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyEnableGradient, enabled);
+    
+    notifyListeners();
+    print('🎨 [PlayerBackground] 渐变开关已更改: $enabled');
   }
 
   /// 获取背景类型的描述

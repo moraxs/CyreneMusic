@@ -49,6 +49,10 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       ],
       systemActions: const {
         MediaAction.seek,
+        MediaAction.play,           // 🎯 蓝牙耳机控制必需
+        MediaAction.pause,          // 🎯 蓝牙耳机控制必需
+        MediaAction.skipToNext,     // 🎯 蓝牙耳机控制必需
+        MediaAction.skipToPrevious, // 🎯 蓝牙耳机控制必需
       },
       androidCompactActionIndices: const [0, 1, 2],  // 全部 3 个按钮都显示
       processingState: AudioProcessingState.idle,
@@ -133,6 +137,10 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         MediaAction.seek,
         MediaAction.seekForward,
         MediaAction.seekBackward,
+        MediaAction.play,           // 🎯 蓝牙耳机控制必需
+        MediaAction.pause,          // 🎯 蓝牙耳机控制必需
+        MediaAction.skipToNext,     // 🎯 蓝牙耳机控制必需
+        MediaAction.skipToPrevious, // 🎯 蓝牙耳机控制必需
       },
       androidCompactActionIndices: const [0, 1, 2], // 全部3个按钮都显示在紧凑视图
       processingState: processingState,
@@ -201,4 +209,5 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     // 自定义操作处理
   }
 }
+
 

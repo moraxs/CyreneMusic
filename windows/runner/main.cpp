@@ -1,6 +1,9 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
+#include <shobjidl.h>
+#include <propkey.h>
+#include <propvarutil.h>
 
 #include "flutter_window.h"
 #include "utils.h"
@@ -19,6 +22,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+  // 设置 AppUserModelID，确保 SMTC 可以正确识别应用
+  // 格式: 公司名.应用名.子产品.版本号
+  ::SetCurrentProcessExplicitAppUserModelID(L"CyreneMusic.MusicPlayer.Desktop.1");
+  
+  // 获取当前进程的窗口句柄（稍后设置）
+  // 这将在 FlutterWindow 创建后设置应用显示名称
 
   flutter::DartProject project(L"data");
 
