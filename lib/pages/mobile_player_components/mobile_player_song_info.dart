@@ -150,42 +150,79 @@ class MobilePlayerSongInfo extends StatelessWidget {
     final name = song?.name ?? track?.name ?? '未知歌曲';
     final artists = song?.arName ?? track?.artists ?? '未知艺术家';
     
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final screenWidth = MediaQuery.of(context).size.width;
-        final titleFontSize = (screenWidth * 0.055).clamp(20.0, 26.0);
-        final artistFontSize = (screenWidth * 0.04).clamp(14.0, 17.0);
+    return ValueListenableBuilder<Color?>(
+      valueListenable: PlayerService().themeColorNotifier,
+      builder: (context, themeColor, child) {
+        final titleColor = _getAdaptiveLyricColor(themeColor, true);
+        final subtitleColor = _getAdaptiveLyricColor(themeColor, false);
         
-        return Padding(
-          padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
-          child: Column(
-            children: [
-              Text(
-                name,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: titleFontSize,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final titleFontSize = (screenWidth * 0.055).clamp(20.0, 26.0);
+            final artistFontSize = (screenWidth * 0.04).clamp(14.0, 17.0);
+            
+            return Padding(
+              padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
+              child: Column(
+                children: [
+                  Text(
+                    name,
+                    style: TextStyle(
+                      color: titleColor,
+                      fontSize: titleFontSize,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: screenWidth * 0.015),
+                  Text(
+                    artists,
+                    style: TextStyle(
+                      color: subtitleColor.withOpacity(0.8),
+                      fontSize: artistFontSize,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
-              SizedBox(height: screenWidth * 0.015),
-              Text(
-                artists,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
-                  fontSize: artistFontSize,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
+  }
+
+  /// 根据背景色亮度判断应该使用深色还是浅色文字
+  /// 返回 true 表示背景亮，应该用深色文字；返回 false 表示背景暗，应该用浅色文字
+  bool _shouldUseDarkText(Color backgroundColor) {
+    // 计算颜色的相对亮度 (0.0 - 1.0)
+    // 使用 W3C 推荐的计算公式
+    final luminance = backgroundColor.computeLuminance();
+    
+    // 如果亮度大于 0.5，认为是亮色背景，应该用深色文字
+    return luminance > 0.5;
+  }
+
+  /// 获取自适应的歌词颜色
+  Color _getAdaptiveLyricColor(Color? themeColor, bool isCurrent) {
+    final color = themeColor ?? Colors.deepPurple;
+    final useDarkText = _shouldUseDarkText(color);
+    
+    if (useDarkText) {
+      // 亮色背景，使用深色文字
+      return isCurrent 
+          ? Colors.black87 
+          : Colors.black54;
+    } else {
+      // 暗色背景，使用浅色文字
+      return isCurrent 
+          ? Colors.white 
+          : Colors.white.withOpacity(0.45);
+    }
   }
 }

@@ -92,7 +92,7 @@ class MobilePlayerBackground extends StatelessWidget {
                            color: Colors.grey[900],
                          ),
                        ),
-                       // 封面底部渐变遮罩 - 让封面底部平滑过渡到主题色
+                       // 封面底部渐变遮罩 - 提前开始渐变，避免突兀过渡
                        Positioned.fill(
                          child: AnimatedContainer(
                            duration: const Duration(milliseconds: 500),
@@ -101,13 +101,17 @@ class MobilePlayerBackground extends StatelessWidget {
                                begin: Alignment.topCenter,
                                end: Alignment.bottomCenter,
                                colors: [
-                                 Colors.transparent,       // 顶部透明，显示原封面
-                                 Colors.transparent,       // 中上部透明
-                                 color.withOpacity(0.2),   // 中下部开始融合主题色
-                                 color.withOpacity(0.5),   // 底部融合更多主题色
-                                 color,                    // 最底部完全融入主题色
+                                 Colors.transparent,           // 顶部完全透明，显示原封面
+                                 Colors.transparent,           // 上1/4保持透明
+                                 color.withOpacity(0.05),     // 提前开始轻微融合
+                                 color.withOpacity(0.12),     // 渐进增加透明度
+                                 color.withOpacity(0.25),     // 四分之一透明度
+                                 color.withOpacity(0.45),     // 接近一半透明度
+                                 color.withOpacity(0.65),     // 较强融合
+                                 color.withOpacity(0.85),     // 非常强的融合
+                                 color,                       // 最底部完全融入主题色
                                ],
-                               stops: const [0.0, 0.4, 0.7, 0.9, 1.0],
+                               stops: const [0.0, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.90, 1.0],
                              ),
                            ),
                          ),
