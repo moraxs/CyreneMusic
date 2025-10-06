@@ -1068,6 +1068,70 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
     );
   }
 
+  /// 构建音量控制（Windows桌面版）
+  Widget _buildVolumeControl(PlayerService player) {
+    final volume = player.volume;
+    
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 280),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 音量图标
+          Icon(
+            volume == 0 
+                ? Icons.volume_off_rounded 
+                : volume < 0.5 
+                    ? Icons.volume_down_rounded 
+                    : Icons.volume_up_rounded,
+            color: Colors.white.withOpacity(0.8),
+            size: 22,
+          ),
+          
+          const SizedBox(width: 10),
+          
+          // 音量滑块
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 3,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                activeTrackColor: Colors.white.withOpacity(0.9),
+                inactiveTrackColor: Colors.white.withOpacity(0.25),
+                thumbColor: Colors.white,
+                overlayColor: Colors.white.withOpacity(0.2),
+              ),
+              child: Slider(
+                value: volume,
+                min: 0.0,
+                max: 1.0,
+                onChanged: (value) {
+                  player.setVolume(value);
+                },
+              ),
+            ),
+          ),
+          
+          const SizedBox(width: 10),
+          
+          // 音量百分比
+          SizedBox(
+            width: 40,
+            child: Text(
+              '${(volume * 100).toInt()}%',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.8),
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 构建歌词列表（固定显示8行，当前歌词在第4行，丝滑滚动）
   Widget _buildLyricList() {
     // 使用 RepaintBoundary 隔离歌词区域的重绘
@@ -1238,16 +1302,26 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
             ),
           ),
           
-          // 时间显示
+          // 时间显示和音量控制
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                // 左侧：当前时间
                 Text(
                   _formatDuration(player.position),
                   style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
                 ),
+                
+                // 中间：音量控制
+                Expanded(
+                  child: Center(
+                    child: _buildVolumeControl(player),
+                  ),
+                ),
+                
+                // 右侧：总时长
                 Text(
                   _formatDuration(player.duration),
                   style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),

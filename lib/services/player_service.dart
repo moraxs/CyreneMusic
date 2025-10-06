@@ -50,6 +50,7 @@ class PlayerService extends ChangeNotifier {
   String? _currentTempFilePath;  // 记录当前临时文件路径
   final Map<String, Color> _themeColorCache = {}; // 主题色缓存
   final ValueNotifier<Color?> themeColorNotifier = ValueNotifier<Color?>(null); // 主题色通知器
+  double _volume = 1.0; // 当前音量 (0.0 - 1.0)
   
   // 听歌统计相关
   async_lib.Timer? _statsTimer; // 统计定时器
@@ -69,6 +70,7 @@ class PlayerService extends ChangeNotifier {
   bool get isPlaying => _state == PlayerState.playing;
   bool get isPaused => _state == PlayerState.paused;
   bool get isLoading => _state == PlayerState.loading;
+  double get volume => _volume; // 获取当前音量
 
   /// 初始化播放器监听
   Future<void> initialize() async {
@@ -514,8 +516,11 @@ class PlayerService extends ChangeNotifier {
   /// 设置音量 (0.0 - 1.0)
   Future<void> setVolume(double volume) async {
     try {
-      await _audioPlayer.setVolume(volume.clamp(0.0, 1.0));
-      print('🔊 [PlayerService] 音量设置为: ${(volume * 100).toInt()}%');
+      final clampedVolume = volume.clamp(0.0, 1.0);
+      await _audioPlayer.setVolume(clampedVolume);
+      _volume = clampedVolume;
+      notifyListeners(); // 通知监听器音量已改变
+      print('🔊 [PlayerService] 音量设置为: ${(clampedVolume * 100).toInt()}%');
     } catch (e) {
       print('❌ [PlayerService] 音量设置失败: $e');
     }

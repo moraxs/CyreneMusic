@@ -791,6 +791,11 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
               // 进度条
               _buildProgressBar(),
               
+              SizedBox(height: itemSpacing * 0.6),
+              
+              // 音量控制
+              _buildVolumeControl(),
+              
               SizedBox(height: itemSpacing),
               
               // 第一行：播放模式、上一首、播放/暂停、下一首、播放列表
@@ -800,6 +805,75 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> {
               
               // 第二行：收藏、下载、评论、添加到歌单
               _buildSecondaryControlRow(),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 构建音量控制
+  Widget _buildVolumeControl() {
+    return AnimatedBuilder(
+      animation: PlayerService(),
+      builder: (context, child) {
+        final player = PlayerService();
+        final volume = player.volume;
+        
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              // 音量图标
+              Icon(
+                volume == 0 
+                    ? Icons.volume_off_rounded 
+                    : volume < 0.5 
+                        ? Icons.volume_down_rounded 
+                        : Icons.volume_up_rounded,
+                color: Colors.white.withOpacity(0.7),
+                size: 20,
+              ),
+              
+              const SizedBox(width: 8),
+              
+              // 音量滑块
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 2.5,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                    activeTrackColor: Colors.white.withOpacity(0.9),
+                    inactiveTrackColor: Colors.white.withOpacity(0.25),
+                    thumbColor: Colors.white,
+                    overlayColor: Colors.white.withOpacity(0.2),
+                  ),
+                  child: Slider(
+                    value: volume,
+                    min: 0.0,
+                    max: 1.0,
+                    onChanged: (value) {
+                      player.setVolume(value);
+                    },
+                  ),
+                ),
+              ),
+              
+              const SizedBox(width: 8),
+              
+              // 音量百分比
+              SizedBox(
+                width: 36,
+                child: Text(
+                  '${(volume * 100).toInt()}%',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 11,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
             ],
           ),
         );
