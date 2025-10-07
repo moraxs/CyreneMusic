@@ -9,6 +9,74 @@ import '../models/track.dart';
 
 /// 从网易云导入歌单对话框
 class ImportPlaylistDialog {
+  /// 解析网易云音乐歌单URL，提取歌单ID
+  static String? _parsePlaylistId(String input) {
+    final trimmedInput = input.trim();
+    
+    // 如果输入的是纯数字ID，直接返回
+    if (RegExp(r'^\d+$').hasMatch(trimmedInput)) {
+      return trimmedInput;
+    }
+    
+    // 尝试从URL中解析ID
+    try {
+      // 支持的URL格式：
+      // https://music.163.com/#/playlist?id=2154199263&creatorId=1408148628
+      // https://music.163.com/playlist?id=2154199263&creatorId=1408148628
+      // http://music.163.com/#/playlist?id=2154199263
+      
+      final uri = Uri.parse(trimmedInput);
+      
+      // 检查是否是网易云音乐域名
+      if (!uri.host.contains('music.163.com')) {
+        return null;
+      }
+      
+      String? playlistId;
+      
+      // 首先检查主URL的查询参数
+      playlistId = uri.queryParameters['id'];
+      
+      // 如果主URL没有，检查fragment中的查询参数
+      if (playlistId == null && uri.fragment.isNotEmpty) {
+        // fragment可能包含路径和查询参数，如：/playlist?id=2154199263&creatorId=1408148628
+        final fragmentParts = uri.fragment.split('?');
+        if (fragmentParts.length > 1) {
+          // 解析fragment中的查询参数
+          final fragmentQuery = fragmentParts[1];
+          final fragmentParams = Uri.splitQueryString(fragmentQuery);
+          playlistId = fragmentParams['id'];
+        }
+      }
+      
+      // 也尝试直接用正则表达式从整个URL中匹配ID
+      if (playlistId == null) {
+        final idMatch = RegExp(r'[?&]id=(\d+)').firstMatch(trimmedInput);
+        if (idMatch != null) {
+          playlistId = idMatch.group(1);
+        }
+      }
+      
+      // 验证ID是否为纯数字
+      if (playlistId != null && RegExp(r'^\d+$').hasMatch(playlistId)) {
+        return playlistId;
+      }
+      
+      return null;
+    } catch (e) {
+      // URL解析失败，尝试正则表达式兜底
+      try {
+        final idMatch = RegExp(r'[?&]id=(\d+)').firstMatch(trimmedInput);
+        if (idMatch != null) {
+          return idMatch.group(1);
+        }
+      } catch (_) {
+        // 忽略正则表达式错误
+      }
+      return null;
+    }
+  }
+
   /// 显示导入歌单对话框
   static Future<void> show(BuildContext context) async {
     final controller = TextEditingController();
@@ -28,12 +96,12 @@ class ImportPlaylistDialog {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '请输入网易云歌单ID',
+              '请输入网易云歌单ID或URL',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
-              '可以从网易云歌单页面URL中获取\n例如: https://music.163.com/#/playlist?id=19723756',
+              '支持以下两种输入方式：\n• 直接输入歌单ID，如：19723756\n• 粘贴完整URL，如：https://music.163.com/#/playlist?id=19723756&creatorId=1408148628\n系统会自动解析URL中的歌单ID',
               style: TextStyle(
                 fontSize: 12,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -43,12 +111,13 @@ class ImportPlaylistDialog {
             TextField(
               controller: controller,
               decoration: const InputDecoration(
-                labelText: '歌单ID',
-                hintText: '例如: 19723756',
+                labelText: '歌单ID或URL',
+                hintText: '例如: 19723756 或完整URL',
                 border: OutlineInputBorder(),
               ),
-              keyboardType: TextInputType.number,
               autofocus: true,
+              maxLines: 2,
+              minLines: 1,
             ),
           ],
         ),
@@ -59,14 +128,27 @@ class ImportPlaylistDialog {
           ),
           FilledButton(
             onPressed: () {
-              final id = controller.text.trim();
-              if (id.isEmpty) {
+              final input = controller.text.trim();
+              if (input.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请输入歌单ID')),
+                  const SnackBar(content: Text('请输入歌单ID或URL')),
                 );
                 return;
               }
-              Navigator.pop(context, id);
+              
+              // 尝试解析歌单ID
+              final playlistId = _parsePlaylistId(input);
+              if (playlistId == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('无效的歌单ID或URL格式\n请检查输入是否为有效的网易云音乐歌单链接'),
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+                return;
+              }
+              
+              Navigator.pop(context, playlistId);
             },
             child: const Text('下一步'),
           ),
