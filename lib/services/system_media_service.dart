@@ -3,10 +3,7 @@ import 'package:audio_service/audio_service.dart';
 import 'player_service.dart';
 import 'tray_service.dart';
 import 'audio_handler_service.dart';
-
-// 条件导入系统媒体控件
-// 使用平台抽象层，在 Windows 平台使用真实实现，其他平台使用桩实现
-import 'smtc_platform.dart';
+import 'native_smtc_service.dart';
 
 /// 系统媒体控件服务
 /// 用于在 Windows 和 Android 平台上集成原生媒体控件
@@ -15,7 +12,7 @@ class SystemMediaService {
   factory SystemMediaService() => _instance;
   SystemMediaService._internal();
 
-  SMTCWindows? _smtcWindows;
+  NativeSmtcService? _nativeSmtc;
   CyreneAudioHandler? _audioHandler;  // Android 媒体处理器
   bool _initialized = false;
   bool _isDisposed = false; // 是否已释放
@@ -48,47 +45,16 @@ class SystemMediaService {
   /// 初始化 Windows 媒体控件 (SMTC)
   Future<void> _initializeWindows() async {
     try {
-      _smtcWindows = SMTCWindows(
-        metadata: const MusicMetadata(
-          title: 'Cyrene Music',
-          album: '',
-          albumArtist: '',
-          artist: '',
-          thumbnail: '',
-        ),
-        timeline: const PlaybackTimeline(
-          startTimeMs: 0,
-          endTimeMs: 0,
-          positionMs: 0,
-          minSeekTimeMs: 0,
-          maxSeekTimeMs: 0,
-        ),
-        config: const SMTCConfig(
-          fastForwardEnabled: false,
-          nextEnabled: true,        // 启用下一首
-          pauseEnabled: true,
-          playEnabled: true,
-          rewindEnabled: false,
-          prevEnabled: true,         // 启用上一首
-          stopEnabled: true,
-        ),
-      );
+      _nativeSmtc = NativeSmtcService();
+      await _nativeSmtc!.initialize();
 
       // 监听 SMTC 按钮事件
-      _smtcWindows!.buttonPressStream.listen((button) {
-        _handleButtonPress(button);
+      _nativeSmtc!.buttonPressStream.listen((button) {
+        _handleNativeButtonPress(button);
       });
 
-      // 启用 SMTC
-      try {
-        _smtcWindows!.enableSmtc();
-        _smtcWindows!.setPlaybackStatus(PlaybackStatus.stopped);
-      } catch (e) {
-        // 忽略初始化时的 SharedMemory 错误
-        if (!e.toString().contains('SharedMemory')) {
-          throw e;
-        }
-      }
+      // 初始状态设置为停止
+      await _nativeSmtc!.updatePlaybackStatus(SmtcPlaybackStatus.stopped);
       
       print('✅ [SystemMediaService] Windows SMTC 初始化成功');
     } catch (e) {
@@ -134,28 +100,28 @@ class SystemMediaService {
     }
   }
 
-  /// 处理媒体按钮事件
-  void _handleButtonPress(PressedButton button) {
+  /// 处理原生SMTC按钮事件
+  void _handleNativeButtonPress(SmtcButton button) {
     final player = PlayerService();
     
     switch (button) {
-      case PressedButton.play:
+      case SmtcButton.play:
         print('▶️ [SystemMediaService] 系统媒体控件: 播放');
         player.resume();
         break;
-      case PressedButton.pause:
+      case SmtcButton.pause:
         print('⏸️ [SystemMediaService] 系统媒体控件: 暂停');
         player.pause();
         break;
-      case PressedButton.stop:
+      case SmtcButton.stop:
         print('⏹️ [SystemMediaService] 系统媒体控件: 停止');
         player.stop();
         break;
-      case PressedButton.next:
+      case SmtcButton.next:
         print('⏭️ [SystemMediaService] 系统媒体控件: 下一曲');
         player.playNext();
         break;
-      case PressedButton.previous:
+      case SmtcButton.previous:
         print('⏮️ [SystemMediaService] 系统媒体控件: 上一曲');
         player.playPrevious();
         break;
@@ -176,7 +142,7 @@ class SystemMediaService {
     final song = player.currentSong;
     final track = player.currentTrack;
 
-    if (Platform.isWindows && _smtcWindows != null) {
+    if (Platform.isWindows && _nativeSmtc != null) {
       _updateWindowsMedia(player, song, track);
     }
     // Android 平台的媒体通知由 AudioHandler 自动处理，无需在此手动更新
@@ -213,14 +179,7 @@ class SystemMediaService {
       
       if (shouldEnableSmtc) {
         print('▶️ [SystemMediaService] 重新启用 SMTC');
-        try {
-          _smtcWindows!.enableSmtc();
-        } catch (e) {
-          // 忽略 SharedMemory 错误
-          if (!e.toString().contains('SharedMemory')) {
-            print('⚠️ [SystemMediaService] 启用 SMTC 失败: $e');
-          }
-        }
+        _nativeSmtc!.enable();
       }
       
       // 1. 检查是否是新歌曲，只在歌曲切换时更新元数据
@@ -235,30 +194,15 @@ class SystemMediaService {
       final isStateChanged = currentState != _lastPlayerState;
       if (isStateChanged) {
         final status = _getPlaybackStatus(currentState);
-        print('🎮 [SystemMediaService] 状态改变: ${currentState.name} -> ${status.name}');
+        print('🎮 [SystemMediaService] 状态改变: ${currentState.name} -> ${status.value}');
         
-        try {
-          _smtcWindows!.setPlaybackStatus(status);
-        } catch (e) {
-          // 忽略 SharedMemory 错误，不影响播放
-          if (!e.toString().contains('SharedMemory')) {
-            print('⚠️ [SystemMediaService] 更新状态失败: $e');
-          }
-        }
-        
+        _nativeSmtc!.updatePlaybackStatus(status);
         _lastPlayerState = currentState;
         
         // 如果是停止或空闲状态，禁用 SMTC
-        if (status == PlaybackStatus.stopped && currentState == PlayerState.idle) {
+        if (status == SmtcPlaybackStatus.stopped && currentState == PlayerState.idle) {
           print('⏹️ [SystemMediaService] 停止播放，禁用 SMTC');
-          try {
-            _smtcWindows!.disableSmtc();
-          } catch (e) {
-            // 忽略错误
-            if (!e.toString().contains('SharedMemory')) {
-              print('⚠️ [SystemMediaService] 禁用 SMTC 失败: $e');
-            }
-          }
+          _nativeSmtc!.disable();
           _lastSongId = null; // 清除缓存，下次播放时重新更新元数据
         }
       }
@@ -270,22 +214,13 @@ class SystemMediaService {
           (isSongChanged || isStateChanged)) {
         print('⏱️ [SystemMediaService] 更新播放进度');
         
-        try {
-          _smtcWindows!.updateTimeline(
-            PlaybackTimeline(
-              startTimeMs: 0,
-              endTimeMs: player.duration.inMilliseconds,
-              positionMs: player.position.inMilliseconds,
-              minSeekTimeMs: 0,
-              maxSeekTimeMs: player.duration.inMilliseconds,
-            ),
-          );
-        } catch (e) {
-          // 忽略 SharedMemory 错误，不影响播放
-          if (!e.toString().contains('SharedMemory')) {
-            print('⚠️ [SystemMediaService] 更新进度失败: $e');
-          }
-        }
+        _nativeSmtc!.updateTimeline(
+          startTimeMs: 0,
+          endTimeMs: player.duration.inMilliseconds,
+          positionMs: player.position.inMilliseconds,
+          minSeekTimeMs: 0,
+          maxSeekTimeMs: player.duration.inMilliseconds,
+        );
       }
     } catch (e) {
       print('❌ [SystemMediaService] 更新 Windows 媒体信息失败: $e');
@@ -315,30 +250,27 @@ class SystemMediaService {
     print('   💿 专辑: $album');
     print('   🖼️ 封面: ${thumbnail.isNotEmpty ? "已设置" : "无"}');
     
-    _smtcWindows!.updateMetadata(
-      MusicMetadata(
-        title: title,
-        artist: artist,
-        album: album,
-        albumArtist: artist,
-        thumbnail: thumbnail,
-      ),
+    _nativeSmtc!.updateMetadata(
+      title: title,
+      artist: artist,
+      album: album,
+      thumbnail: thumbnail.isNotEmpty ? thumbnail : null,
     );
     
     print('✅ [SystemMediaService] 元数据已更新到 SMTC');
   }
 
   /// 将播放状态转换为 SMTC 播放状态
-  PlaybackStatus _getPlaybackStatus(PlayerState state) {
+  SmtcPlaybackStatus _getPlaybackStatus(PlayerState state) {
     switch (state) {
       case PlayerState.playing:
-        return PlaybackStatus.playing;
+        return SmtcPlaybackStatus.playing;
       case PlayerState.paused:
-        return PlaybackStatus.paused;
+        return SmtcPlaybackStatus.paused;
       case PlayerState.loading:
-        return PlaybackStatus.changing;
+        return SmtcPlaybackStatus.changing;
       default:
-        return PlaybackStatus.stopped;
+        return SmtcPlaybackStatus.stopped;
     }
   }
 
@@ -365,10 +297,10 @@ class SystemMediaService {
       _lastPlayerState = null;
       
       // 释放 SMTC（不等待，让系统自动清理）
-      if (_smtcWindows != null) {
+      if (_nativeSmtc != null) {
         print('🗑️ [SystemMediaService] 释放 SMTC 资源...');
-        _smtcWindows?.dispose();
-        _smtcWindows = null;
+        _nativeSmtc?.dispose();
+        _nativeSmtc = null;
       }
       
       // 释放 Android AudioHandler

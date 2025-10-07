@@ -44,8 +44,7 @@ dependencies:
   # Audio player
   audioplayers: ^6.0.0
   
-  # System media controls
-  smtc_windows: ^1.0.0
+  # System media controls (Android only, Windows uses native C++ implementation)
   audio_service: ^0.18.12
   
   # System tray (Windows/macOS/Linux)
