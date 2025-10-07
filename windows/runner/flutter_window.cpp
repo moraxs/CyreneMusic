@@ -5,6 +5,7 @@
 #include "flutter/generated_plugin_registrant.h"
 #include "system_color_helper.h"
 #include "desktop_lyric_plugin.h"
+#include "smtc_plugin.h"
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
 
@@ -34,6 +35,10 @@ bool FlutterWindow::OnCreate() {
   // Register desktop lyric plugin
   DesktopLyricPlugin::RegisterWithRegistrar(
       flutter_controller_->engine()->GetRegistrarForPlugin("DesktopLyricPlugin"));
+  
+  // Register SMTC plugin
+  cyrene_music::SmtcPlugin::RegisterWithRegistrar(
+      flutter_controller_->engine()->GetRegistrarForPlugin("SmtcPlugin"));
 
   // Register system color platform channel
   const std::string channel_name = "com.cyrene.music/system_color";

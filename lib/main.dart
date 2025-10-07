@@ -16,9 +16,8 @@ import 'services/player_background_service.dart';
 import 'services/persistent_storage_service.dart';
 import 'services/listening_stats_service.dart';
 import 'services/desktop_lyric_service.dart';
+import 'services/android_floating_lyric_service.dart';
 
-// 条件导入 SMTC（通过平台抽象层）
-import 'services/smtc_platform.dart';
 
 // 条件导入 flutter_displaymode（仅 Android）
 import 'package:flutter_displaymode/flutter_displaymode.dart' if (dart.library.html) '';
@@ -72,12 +71,6 @@ void main() async {
       await windowManager.setPreventClose(true);
       print('✅ [Main] 窗口已显示，关闭按钮将最小化到托盘');
     });
-  }
-  
-  // Windows 平台初始化 SMTC
-  if (Platform.isWindows) {
-    await SMTCWindows.initialize();
-    DeveloperModeService().addLog('🎮 SMTC 已初始化');
   }
   
   // 🔧 初始化 URL 服务（必须在其他网络服务之前）
@@ -137,6 +130,12 @@ void main() async {
   if (Platform.isWindows) {
     await DesktopLyricService().initialize();
     DeveloperModeService().addLog('🎤 桌面歌词服务已初始化');
+  }
+  
+  // 初始化Android悬浮歌词服务（仅Android）
+  if (Platform.isAndroid) {
+    await AndroidFloatingLyricService().initialize();
+    DeveloperModeService().addLog('📱 Android悬浮歌词服务已初始化');
   }
   
   runApp(const MyApp());

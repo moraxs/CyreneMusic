@@ -25,7 +25,7 @@ class VersionService extends ChangeNotifier {
 
   /// ⚠️⚠️⚠️ 应用当前版本（硬编码）⚠️⚠️⚠️
   /// 发布新版本时 **必须** 手动更新此值！
-  static const String kAppVersion = '1.0.4';
+  static const String kAppVersion = '1.0.5';
 
   /// 当前应用版本
   String _currentVersion = kAppVersion;
@@ -78,15 +78,30 @@ class VersionService extends ChangeNotifier {
     }
   }
 
-  /// 忽略当前版本的更新
+  /// 忽略当前版本的更新（永久忽略）
   Future<void> ignoreCurrentVersion(String version) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('ignored_update_version', version);
-      print('🔕 [VersionService] 已忽略版本: $version');
+      print('🔕 [VersionService] 已永久忽略版本: $version');
     } catch (e) {
       print('❌ [VersionService] 保存忽略版本失败: $e');
     }
+  }
+
+  /// 稍后提醒（仅在本次会话中忽略）
+  /// 记录本次会话中已提醒过的版本，避免重复提示
+  final Set<String> _remindedVersions = {};
+
+  /// 标记某个版本在本次会话中已提醒
+  void markVersionReminded(String version) {
+    _remindedVersions.add(version);
+    print('⏰ [VersionService] 已标记版本 $version 为稍后提醒（本次会话）');
+  }
+
+  /// 检查某个版本在本次会话中是否已提醒过
+  bool hasRemindedInSession(String version) {
+    return _remindedVersions.contains(version);
   }
 
   /// 清除忽略的版本（用于测试或重置）

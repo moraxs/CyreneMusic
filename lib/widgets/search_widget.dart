@@ -5,15 +5,17 @@ import '../models/merged_track.dart';
 import '../services/search_service.dart';
 import '../services/player_service.dart';
 import '../services/auth_service.dart';
-import '../pages/auth/login_page.dart';
+import '../pages/auth/auth_page.dart';
 
 /// 搜索组件（内嵌版本）
 class SearchWidget extends StatefulWidget {
   final VoidCallback onClose;
+  final String? initialKeyword; // 初始搜索关键词
 
   const SearchWidget({
     super.key,
     required this.onClose,
+    this.initialKeyword,
   });
 
   @override
@@ -28,6 +30,17 @@ class _SearchWidgetState extends State<SearchWidget> {
   void initState() {
     super.initState();
     _searchService.addListener(_onSearchResultChanged);
+    
+    // 如果有初始关键词，自动填充并搜索
+    if (widget.initialKeyword != null && widget.initialKeyword!.isNotEmpty) {
+      _searchController.text = widget.initialKeyword!;
+      // 延迟执行搜索，确保 UI 已经构建完成
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          _performSearch();
+        }
+      });
+    }
   }
 
   @override
@@ -77,12 +90,7 @@ class _SearchWidgetState extends State<SearchWidget> {
 
     if (shouldLogin == true && mounted) {
       // 跳转到登录页面
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const LoginPage(),
-        ),
-      );
+      final result = await showAuthDialog(context);
       
       // 返回登录是否成功
       return result == true && AuthService().isLoggedIn;

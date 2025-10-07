@@ -14,6 +14,7 @@ add_executable(${BINARY_NAME} WIN32
   "system_color_helper.cpp"
   "desktop_lyric_window.cpp"
   "desktop_lyric_plugin.cpp"
+  "smtc_plugin.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
   "Runner.rc"
   "runner.exe.manifest"
@@ -40,7 +41,12 @@ target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "gdiplus.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "propsys.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "windowsapp.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
+
+# 启用C++/WinRT支持（Windows 10 SDK）
+set_property(TARGET ${BINARY_NAME} PROPERTY CXX_STANDARD 17)
+target_compile_options(${BINARY_NAME} PRIVATE /await)
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)

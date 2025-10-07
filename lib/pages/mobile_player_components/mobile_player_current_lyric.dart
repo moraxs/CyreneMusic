@@ -172,7 +172,7 @@ class MobilePlayerCurrentLyric extends StatelessWidget {
 
   /// 获取自适应的歌词颜色
   Color _getAdaptiveLyricColor(Color? themeColor, bool isCurrent) {
-    final color = themeColor ?? Colors.deepPurple;
+    final color = themeColor ?? Colors.grey[700]!;
     final useDarkText = _shouldUseDarkText(color);
     
     if (useDarkText) {

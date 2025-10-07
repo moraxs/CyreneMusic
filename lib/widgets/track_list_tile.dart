@@ -3,7 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
 import '../services/player_service.dart';
 import '../services/auth_service.dart';
-import '../pages/auth/login_page.dart';
+import '../pages/auth/auth_page.dart';
 
 /// 歌曲列表项组件
 class TrackListTile extends StatefulWidget {
@@ -57,12 +57,7 @@ class _TrackListTileState extends State<TrackListTile> {
 
     if (shouldLogin == true && mounted) {
       // 跳转到登录页面
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const LoginPage(),
-        ),
-      );
+      final result = await showAuthDialog(context);
       
       // 返回登录是否成功
       return result == true && AuthService().isLoggedIn;

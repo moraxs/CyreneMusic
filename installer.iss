@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Cyrene Music"
-#define MyAppVersion "1.0.4"
+#define MyAppVersion "1.0.5"
 #define MyAppPublisher "morax"
 #define MyAppURL "https://music.cialloo.site"
 #define MyAppExeName "cyrene_music.exe"
@@ -25,7 +25,7 @@ DefaultDirName={autopf}\{#MyAppName}
 ChangesAssociations=yes
 DisableProgramGroupPage=yes
 ; Remove the following line to run in administrative install mode (install for all users.)
-PrivilegesRequired=lowest
+PrivilegesRequired=admin
 OutputDir=installer
 OutputBaseFilename=setup
 SetupIconFile=windows\runner\resources\app_icon.ico

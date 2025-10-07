@@ -17,8 +17,9 @@ import '../services/download_service.dart';
 import '../services/audio_quality_service.dart';
 import '../services/version_service.dart';
 import '../services/player_background_service.dart';
-import '../pages/auth/login_page.dart';
+import '../pages/auth/auth_page.dart';
 import '../widgets/desktop_lyric_settings.dart';
+import '../widgets/android_floating_lyric_settings.dart';
 
 /// 设置页面
 class SettingsPage extends StatefulWidget {
@@ -234,6 +235,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 if (Platform.isWindows) ...[
                   _buildSectionTitle('桌面歌词'),
                   const DesktopLyricSettings(),
+                  const SizedBox(height: 24),
+                ],
+                
+                // Android 平台显示悬浮歌词设置
+                if (Platform.isAndroid) ...[
+                  _buildSectionTitle('悬浮歌词'),
+                  const AndroidFloatingLyricSettings(),
                   const SizedBox(height: 24),
                 ],
                 
@@ -1530,12 +1538,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _handleLogin() async {
     print('👤 [SettingsPage] 打开登录页面...');
     
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const LoginPage(),
-      ),
-    );
+    final result = await showAuthDialog(context);
     
     print('👤 [SettingsPage] 登录页面返回，结果: $result');
     print('👤 [SettingsPage] 当前登录状态: ${AuthService().isLoggedIn}');

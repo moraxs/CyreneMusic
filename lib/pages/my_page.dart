@@ -8,7 +8,7 @@ import '../services/playlist_queue_service.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../widgets/import_playlist_dialog.dart';
-import 'auth/login_page.dart';
+import 'auth/auth_page.dart';
 
 /// 我的页面 - 包含歌单和听歌统计
 class MyPage extends StatefulWidget {
@@ -99,12 +99,7 @@ class _MyPageState extends State<MyPage> {
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const LoginPage(),
-                  ),
-                ).then((_) {
+                showAuthDialog(context).then((_) {
                   if (mounted) setState(() {});
                 });
               },

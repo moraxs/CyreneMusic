@@ -15,7 +15,7 @@ import '../widgets/toplist_card.dart';
 import '../widgets/track_list_tile.dart';
 import '../widgets/search_widget.dart';
 import '../utils/page_visibility_notifier.dart';
-import '../pages/auth/login_page.dart';
+import '../pages/auth/auth_page.dart';
 
 /// 首页 - 展示音乐和视频内容
 class HomePage extends StatefulWidget {
@@ -197,10 +197,18 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
       if (versionInfo != null && VersionService().hasUpdate) {
         // 检查用户是否已忽略此版本
         final shouldShow = await VersionService().shouldShowUpdateDialog(versionInfo);
-        if (shouldShow) {
+        
+        // 检查本次会话是否已提醒过（稍后提醒）
+        final hasReminded = VersionService().hasRemindedInSession(versionInfo.version);
+        
+        if (shouldShow && !hasReminded) {
           _showUpdateDialog(versionInfo);
         } else {
-          print('🔕 [HomePage] 用户已忽略此版本，不再提示');
+          if (hasReminded) {
+            print('⏰ [HomePage] 用户选择了稍后提醒，本次会话不再提示');
+          } else {
+            print('🔕 [HomePage] 用户已忽略此版本，不再提示');
+          }
         }
       }
     } catch (e) {
@@ -290,11 +298,30 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
           ),
         ),
         actions: [
-          // 稍后提醒（仅非强制更新时显示）
+          // 稍后提醒（仅非强制更新时显示，本次会话不再提醒）
+          if (!versionInfo.forceUpdate)
+            TextButton(
+              onPressed: () {
+                // 标记本次会话已提醒，不保存到持久化存储
+                VersionService().markVersionReminded(versionInfo.version);
+                if (mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('本次启动将不再提醒，下次启动时会再次提示'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              child: const Text('稍后提醒'),
+            ),
+          
+          // 忽略此版本（仅非强制更新时显示，永久忽略）
           if (!versionInfo.forceUpdate)
             TextButton(
               onPressed: () async {
-                // 保存用户忽略的版本号
+                // 永久保存用户忽略的版本号
                 await VersionService().ignoreCurrentVersion(versionInfo.version);
                 if (mounted) {
                   Navigator.of(context).pop();
@@ -306,7 +333,7 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                   );
                 }
               },
-              child: const Text('稍后提醒'),
+              child: const Text('忽略此版本'),
             ),
           
           // 立即更新
@@ -383,12 +410,7 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
 
     if (shouldLogin == true && mounted) {
       // 跳转到登录页面
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const LoginPage(),
-        ),
-      );
+      final result = await showAuthDialog(context);
       
       // 返回登录是否成功
       return result == true && AuthService().isLoggedIn;
