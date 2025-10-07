@@ -437,10 +437,11 @@ class PlayerService extends ChangeNotifier {
       // 创建一个自定义的 ImageProvider 用于底部区域
       final region = Rect.fromLTWH(0, topOffset.toDouble(), width.toDouble(), bottomHeight.toDouble());
       
-      // 对底部区域进行颜色提取
+      // 对底部区域进行颜色提取（修复：添加size参数）
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
         imageProvider,
         region: region,
+        size: Size(width.toDouble(), height.toDouble()), // 必须提供原始图片尺寸
         maximumColorCount: 20, // 增加采样数以获得更准确的底部颜色
         timeout: const Duration(seconds: 5),
       );
