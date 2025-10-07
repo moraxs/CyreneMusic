@@ -54,11 +54,6 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Remove Windows-only dependencies
-        run: |
-          # 临时移除 smtc_windows 依赖（仅 Windows 支持）
-          sed -i '/smtc_windows:/d' pubspec.yaml
-
       - name: Get dependencies
         run: flutter pub get
 
@@ -121,7 +116,9 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad gstreamer1.0-libav
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -131,11 +128,6 @@ jobs:
 
       - name: Enable Linux desktop
         run: flutter config --enable-linux-desktop
-
-      - name: Remove Windows-only dependencies
-        run: |
-          # 临时移除 smtc_windows 依赖（仅 Windows 支持）
-          sed -i '/smtc_windows:/d' pubspec.yaml
 
       - name: Get dependencies
         run: flutter pub get
@@ -172,11 +164,6 @@ jobs:
       - name: Enable macOS desktop
         run: flutter config --enable-macos-desktop
 
-      - name: Remove Windows-only dependencies
-        run: |
-          # 临时移除 smtc_windows 依赖（仅 Windows 支持）
-          sed -i '' '/smtc_windows:/d' pubspec.yaml
-
       - name: Get dependencies
         run: flutter pub get
 
@@ -209,11 +196,6 @@ jobs:
         with:
           channel: 'stable'
           cache: true
-
-      - name: Remove Windows-only dependencies
-        run: |
-          # 临时移除 smtc_windows 依赖（仅 Windows 支持）
-          sed -i '' '/smtc_windows:/d' pubspec.yaml
 
       - name: Get dependencies
         run: flutter pub get
