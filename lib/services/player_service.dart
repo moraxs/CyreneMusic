@@ -21,8 +21,10 @@ import 'playlist_queue_service.dart';
 import 'audio_quality_service.dart';
 import 'listening_stats_service.dart';
 import 'desktop_lyric_service.dart';
+import 'android_floating_lyric_service.dart';
 import 'player_background_service.dart';
 import 'dart:async' as async_lib;
+import 'dart:async' show TimeoutException;
 
 /// 播放状态枚举
 enum PlayerState {
@@ -80,19 +82,35 @@ class PlayerService extends ChangeNotifier {
         case ap.PlayerState.playing:
           _state = PlayerState.playing;
           _startListeningTimeTracking(); // 开始听歌时长追踪
+          // 🔥 通知Android原生层播放状态（后台歌词更新关键）
+          if (Platform.isAndroid) {
+            AndroidFloatingLyricService().setPlayingState(true);
+          }
           break;
         case ap.PlayerState.paused:
           _state = PlayerState.paused;
           _pauseListeningTimeTracking(); // 暂停听歌时长追踪
+          // 🔥 通知Android原生层播放状态（后台歌词更新关键）
+          if (Platform.isAndroid) {
+            AndroidFloatingLyricService().setPlayingState(false);
+          }
           break;
         case ap.PlayerState.stopped:
           _state = PlayerState.idle;
           _pauseListeningTimeTracking(); // 暂停听歌时长追踪
+          // 🔥 通知Android原生层播放状态（后台歌词更新关键）
+          if (Platform.isAndroid) {
+            AndroidFloatingLyricService().setPlayingState(false);
+          }
           break;
         case ap.PlayerState.completed:
           _state = PlayerState.idle;
           _position = Duration.zero;
           _pauseListeningTimeTracking(); // 暂停听歌时长追踪
+          // 🔥 通知Android原生层播放状态（后台歌词更新关键）
+          if (Platform.isAndroid) {
+            AndroidFloatingLyricService().setPlayingState(false);
+          }
           // 歌曲播放完毕，自动播放下一首
           _playNextFromHistory();
           break;
@@ -105,7 +123,11 @@ class PlayerService extends ChangeNotifier {
     // 监听播放进度
     _audioPlayer.onPositionChanged.listen((position) {
       _position = position;
-      _updateDesktopLyric(); // 更新桌面歌词
+      _updateFloatingLyric(); // 更新桌面/悬浮歌词
+      // 🔥 通知Android原生层播放位置（后台歌词更新关键）
+      if (Platform.isAndroid) {
+        AndroidFloatingLyricService().updatePosition(position);
+      }
       notifyListeners();
     });
 
@@ -185,7 +207,7 @@ class PlayerService extends ChangeNotifier {
           print('✅ [PlayerService] 已更新 currentSong（从缓存，包含歌词）');
           
           // 加载桌面歌词
-          _loadLyricsForDesktop();
+          _loadLyricsForFloatingDisplay();
 
           // 播放缓存文件
           await _audioPlayer.play(ap.DeviceFileSource(cachedFilePath));
@@ -233,8 +255,8 @@ class PlayerService extends ChangeNotifier {
       notifyListeners();
       print('✅ [PlayerService] 已更新 currentSong 并通知监听器（包含歌词）');
       
-      // 加载桌面歌词
-      _loadLyricsForDesktop();
+      // 加载桌面/悬浮歌词
+      _loadLyricsForFloatingDisplay();
 
       // 3. 播放音乐
       if (track.source == MusicSource.qq || track.source == MusicSource.kugou) {
@@ -338,8 +360,8 @@ class PlayerService extends ChangeNotifier {
   /// 后台提取主题色（为播放器页面预加载）
   Future<void> _extractThemeColorInBackground(String imageUrl) async {
     if (imageUrl.isEmpty) {
-      // 如果没有图片URL，设置一个默认颜色
-      themeColorNotifier.value = Colors.deepPurple;
+      // 如果没有图片URL，设置一个默认颜色（灰色更柔和）
+      themeColorNotifier.value = Colors.grey[700]!;
       return;
     }
 
@@ -372,39 +394,52 @@ class PlayerService extends ChangeNotifier {
 
       // 如果仍然无法提取颜色，使用默认值
       if (themeColor == null) {
-        print('⚠️ [PlayerService] 无法从封面提取颜色，使用默认颜色');
-        themeColor = Colors.deepPurple;
+        print('⚠️ [PlayerService] 无法从封面提取颜色（可能是网络问题），使用默认灰色');
+        themeColor = Colors.grey[700]!;
       }
 
       _themeColorCache[cacheKey] = themeColor;
       themeColorNotifier.value = themeColor;
       print('✅ [PlayerService] 主题色提取完成: $themeColor');
+    } on TimeoutException catch (e) {
+      print('⏱️ [PlayerService] 主题色提取超时: 网络较慢，使用默认灰色');
+      final defaultColor = Colors.grey[700]!;
+      themeColorNotifier.value = defaultColor;
+      // 超时不影响正常使用，不再打印堆栈信息
     } catch (e) {
       print('⚠️ [PlayerService] 主题色提取失败: $e');
-      final defaultColor = Colors.deepPurple;
+      final defaultColor = Colors.grey[700]!;
       themeColorNotifier.value = defaultColor;
-      print('🎨 [PlayerService] 使用默认主题色: $defaultColor');
     }
   }
 
   /// 从整张图片提取主题色
   Future<Color?> _extractColorFromFullImage(String imageUrl) async {
-    final imageProvider = CachedNetworkImageProvider(imageUrl);
-    final timeout = Platform.isAndroid 
-        ? const Duration(seconds: 5) 
-        : const Duration(seconds: 2);
-    
-    final paletteGenerator = await PaletteGenerator.fromImageProvider(
-      imageProvider,
-      maximumColorCount: Platform.isAndroid ? 16 : 12,
-      timeout: timeout,
-    );
+    try {
+      final imageProvider = CachedNetworkImageProvider(imageUrl);
+      // 增加超时时间，网络慢时给予更多时间
+      final timeout = Platform.isAndroid 
+          ? const Duration(seconds: 10) 
+          : const Duration(seconds: 8);
+      
+      final paletteGenerator = await PaletteGenerator.fromImageProvider(
+        imageProvider,
+        maximumColorCount: Platform.isAndroid ? 16 : 12,
+        timeout: timeout,
+      );
 
-    return paletteGenerator.vibrantColor?.color ?? 
-           paletteGenerator.dominantColor?.color ??
-           paletteGenerator.darkVibrantColor?.color ??
-           paletteGenerator.lightVibrantColor?.color ??
-           paletteGenerator.mutedColor?.color;
+      return paletteGenerator.vibrantColor?.color ?? 
+             paletteGenerator.dominantColor?.color ??
+             paletteGenerator.darkVibrantColor?.color ??
+             paletteGenerator.lightVibrantColor?.color ??
+             paletteGenerator.mutedColor?.color;
+    } on TimeoutException catch (e) {
+      print('⏱️ [PlayerService] 图片加载超时，使用默认颜色: ${e.message}');
+      return null; // 返回 null，让外层使用默认颜色
+    } catch (e) {
+      print('⚠️ [PlayerService] 提取颜色异常: $e');
+      return null;
+    }
   }
 
   /// 从图片底部区域提取主题色（用于移动端渐变模式）
@@ -412,7 +447,7 @@ class PlayerService extends ChangeNotifier {
     try {
       final imageProvider = CachedNetworkImageProvider(imageUrl);
       
-      // 加载图片
+      // 加载图片（增加超时时间）
       final imageStream = imageProvider.resolve(const ImageConfiguration());
       final completer = async_lib.Completer<ui.Image>();
       late ImageStreamListener listener;
@@ -426,7 +461,14 @@ class PlayerService extends ChangeNotifier {
       });
       
       imageStream.addListener(listener);
-      final image = await completer.future.timeout(const Duration(seconds: 5));
+      // 增加图片加载超时时间
+      final image = await completer.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          imageStream.removeListener(listener);
+          throw TimeoutException('图片加载超时', const Duration(seconds: 10));
+        },
+      );
       
       // 计算底部区域（底部 30%）
       final width = image.width;
@@ -437,13 +479,13 @@ class PlayerService extends ChangeNotifier {
       // 创建一个自定义的 ImageProvider 用于底部区域
       final region = Rect.fromLTWH(0, topOffset.toDouble(), width.toDouble(), bottomHeight.toDouble());
       
-      // 对底部区域进行颜色提取（修复：添加size参数）
+      // 对底部区域进行颜色提取（增加超时时间）
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
         imageProvider,
         region: region,
         size: Size(width.toDouble(), height.toDouble()), // 必须提供原始图片尺寸
         maximumColorCount: 20, // 增加采样数以获得更准确的底部颜色
-        timeout: const Duration(seconds: 5),
+        timeout: const Duration(seconds: 10),
       );
 
       print('🎨 [PlayerService] 从底部区域提取颜色（区域: ${region.toString()}）');
@@ -453,9 +495,14 @@ class PlayerService extends ChangeNotifier {
              paletteGenerator.darkVibrantColor?.color ??
              paletteGenerator.lightVibrantColor?.color ??
              paletteGenerator.mutedColor?.color;
+    } on TimeoutException catch (e) {
+      print('⏱️ [PlayerService] 图片加载超时（${e.duration?.inSeconds}秒），回退到默认颜色');
+      // 超时不再回退到全图提取，直接返回 null
+      return null;
     } catch (e) {
-      print('⚠️ [PlayerService] 从底部区域提取颜色失败: $e，回退到全图提取');
-      return _extractColorFromFullImage(imageUrl);
+      print('⚠️ [PlayerService] 从底部区域提取颜色失败: $e');
+      // 其他错误也直接返回 null，避免二次尝试
+      return null;
     }
   }
 
@@ -824,19 +871,21 @@ class PlayerService extends ChangeNotifier {
     return PlayHistoryService().history.length >= 2;
   }
 
-  /// 加载桌面歌词（Windows平台）
-  void _loadLyricsForDesktop() {
-    if (!Platform.isWindows) return;
-    
+  /// 加载桌面/悬浮歌词（Windows/Android平台）
+  void _loadLyricsForFloatingDisplay() {
     final currentSong = _currentSong;
     if (currentSong == null || currentSong.lyric.isEmpty) {
-      print('📝 [PlayerService] 桌面歌词：无歌词可显示');
+      print('📝 [PlayerService] 悬浮歌词：无歌词可显示');
       _lyrics = [];
       _currentLyricIndex = -1;
       
-      // 清空桌面歌词显示
-      if (DesktopLyricService().isVisible) {
+      // 清空歌词显示
+      if (Platform.isWindows && DesktopLyricService().isVisible) {
         DesktopLyricService().setLyricText('');
+      }
+      if (Platform.isAndroid && AndroidFloatingLyricService().isVisible) {
+        AndroidFloatingLyricService().setLyricText('');
+        AndroidFloatingLyricService().setLyricsData([]); // 清空原生层歌词数据
       }
       return;
     }
@@ -870,22 +919,39 @@ class PlayerService extends ChangeNotifier {
       }
 
       _currentLyricIndex = -1;
-      print('🎵 [PlayerService] 桌面歌词已加载: ${_lyrics.length} 行');
+      print('🎵 [PlayerService] 悬浮歌词已加载: ${_lyrics.length} 行');
+      
+      // 🔥 关键修复：将完整歌词数据发送到Android原生层
+      // 这样即使应用退到后台，原生层也能独立更新歌词
+      if (Platform.isAndroid && AndroidFloatingLyricService().isVisible) {
+        final lyricsData = _lyrics.map((line) => {
+          'time': line.startTime.inMilliseconds,  // 转换为毫秒
+          'text': line.text,
+          'translation': line.translation ?? '',
+        }).toList();
+        
+        AndroidFloatingLyricService().setLyricsData(lyricsData);
+        print('✅ [PlayerService] 歌词数据已发送到Android原生层，支持后台更新');
+      }
       
       // 立即更新当前歌词
-      _updateDesktopLyric();
+      _updateFloatingLyric();
     } catch (e) {
-      print('❌ [PlayerService] 桌面歌词加载失败: $e');
+      print('❌ [PlayerService] 悬浮歌词加载失败: $e');
       _lyrics = [];
       _currentLyricIndex = -1;
     }
   }
 
-  /// 更新桌面歌词显示
-  void _updateDesktopLyric() {
-    if (!Platform.isWindows) return;
+  /// 更新桌面/悬浮歌词显示
+  void _updateFloatingLyric() {
     if (_lyrics.isEmpty) return;
-    if (!DesktopLyricService().isVisible) return;
+    
+    // 检查是否有可见的歌词服务
+    final isWindowsVisible = Platform.isWindows && DesktopLyricService().isVisible;
+    final isAndroidVisible = Platform.isAndroid && AndroidFloatingLyricService().isVisible;
+    
+    if (!isWindowsVisible && !isAndroidVisible) return;
 
     try {
       final newIndex = LyricParser.findCurrentLineIndex(_lyrics, _position);
@@ -900,13 +966,28 @@ class PlayerService extends ChangeNotifier {
           displayText = '${currentLine.text}\n${currentLine.translation}';
         }
         
-        // 更新桌面歌词
-        DesktopLyricService().setLyricText(displayText);
+        // 更新Windows桌面歌词
+        if (isWindowsVisible) {
+          DesktopLyricService().setLyricText(displayText);
+        }
+        
+        // 更新Android悬浮歌词
+        if (isAndroidVisible) {
+          AndroidFloatingLyricService().setLyricText(displayText);
+        }
       }
     } catch (e) {
       // 忽略更新错误，不影响播放
-      print('⚠️ [PlayerService] 桌面歌词更新失败: $e');
+      print('⚠️ [PlayerService] 悬浮歌词更新失败: $e');
     }
+  }
+  
+  /// 手动更新悬浮歌词（供后台服务调用）
+  /// 
+  /// 这个方法由 AudioHandler 的定时器调用，确保即使应用在后台，
+  /// 悬浮歌词也能持续更新
+  void updateFloatingLyricManually() {
+    _updateFloatingLyric();
   }
 }
 

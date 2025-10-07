@@ -4,6 +4,7 @@ import '../../services/player_service.dart';
 import '../../services/player_background_service.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
+import '../../widgets/search_widget.dart';
 
 /// 移动端播放器歌曲信息组件
 /// 显示专辑封面、歌曲名称、艺术家等信息
@@ -37,7 +38,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Spacer(),
-                  _buildSongInfo(song, track),
+                  _buildSongInfo(context, song, track),
                   const Spacer(),
                 ],
               );
@@ -53,7 +54,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
                   ],
                   
                   // 歌曲信息
-                  _buildSongInfo(song, track),
+                  _buildSongInfo(context, song, track),
                 ],
               );
             }
@@ -146,9 +147,13 @@ class MobilePlayerSongInfo extends StatelessWidget {
   }
 
   /// 构建歌曲信息
-  Widget _buildSongInfo(SongDetail? song, Track? track) {
+  Widget _buildSongInfo(BuildContext context, SongDetail? song, Track? track) {
     final name = song?.name ?? track?.name ?? '未知歌曲';
-    final artists = song?.arName ?? track?.artists ?? '未知艺术家';
+    final artistsStr = song?.arName ?? track?.artists ?? '未知艺术家';
+    final album = song?.alName ?? track?.album ?? '';
+
+    // 分割歌手（支持多种分隔符：/ , 、）
+    final artists = _splitArtists(artistsStr);
     
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
@@ -160,12 +165,12 @@ class MobilePlayerSongInfo extends StatelessWidget {
           builder: (context, constraints) {
             final screenWidth = MediaQuery.of(context).size.width;
             final titleFontSize = (screenWidth * 0.055).clamp(20.0, 26.0);
-            final artistFontSize = (screenWidth * 0.04).clamp(14.0, 17.0);
             
             return Padding(
               padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
               child: Column(
                 children: [
+                  // 歌曲名称
                   Text(
                     name,
                     style: TextStyle(
@@ -177,23 +182,129 @@ class MobilePlayerSongInfo extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  SizedBox(height: screenWidth * 0.015),
-                  Text(
-                    artists,
-                    style: TextStyle(
-                      color: subtitleColor.withOpacity(0.8),
-                      fontSize: artistFontSize,
+                  SizedBox(height: screenWidth * 0.02),
+                  
+                  // 艺术家（多个可点击）
+                  _buildArtistsRow(context, artists, subtitleColor, screenWidth),
+                  
+                  // 专辑（可点击）
+                  if (album.isNotEmpty) ...[
+                    SizedBox(height: screenWidth * 0.015),
+                    InkWell(
+                      onTap: () => _searchInDialog(context, album),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.album_outlined,
+                              size: 12,
+                              color: subtitleColor.withOpacity(0.6),
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                album,
+                                style: TextStyle(
+                                  color: subtitleColor.withOpacity(0.6),
+                                  fontSize: (screenWidth * 0.032).clamp(12.0, 14.0),
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  ],
                 ],
               ),
             );
           },
         );
       },
+    );
+  }
+
+  /// 构建多个艺术家的可点击行
+  Widget _buildArtistsRow(BuildContext context, List<String> artists, Color baseColor, double screenWidth) {
+    final artistFontSize = (screenWidth * 0.04).clamp(14.0, 17.0);
+    
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 0,
+      runSpacing: 4,
+      children: artists.asMap().entries.map((entry) {
+        final index = entry.key;
+        final artist = entry.value;
+        final isLast = index == artists.length - 1;
+        
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              onTap: () => _searchInDialog(context, artist),
+              borderRadius: BorderRadius.circular(4),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  artist,
+                  style: TextStyle(
+                    color: baseColor.withOpacity(0.8),
+                    fontSize: artistFontSize,
+                  ),
+                ),
+              ),
+            ),
+            if (!isLast)
+              Text(
+                ' / ',
+                style: TextStyle(
+                  color: baseColor.withOpacity(0.6),
+                  fontSize: artistFontSize,
+                ),
+              ),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
+  /// 分割歌手字符串（支持多种分隔符）
+  List<String> _splitArtists(String artistsStr) {
+    // 支持的分隔符：/ , 、
+    final separators = ['/', ',', '、'];
+    
+    for (final separator in separators) {
+      if (artistsStr.contains(separator)) {
+        return artistsStr
+            .split(separator)
+            .map((a) => a.trim())
+            .where((a) => a.isNotEmpty)
+            .toList();
+      }
+    }
+    
+    return [artistsStr];
+  }
+
+  /// 在全屏对话框中打开搜索（移动端）
+  void _searchInDialog(BuildContext context, String keyword) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => Scaffold(
+          body: SearchWidget(
+            onClose: () => Navigator.pop(context),
+            initialKeyword: keyword,
+          ),
+        ),
+      ),
     );
   }
 
@@ -210,7 +321,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
 
   /// 获取自适应的歌词颜色
   Color _getAdaptiveLyricColor(Color? themeColor, bool isCurrent) {
-    final color = themeColor ?? Colors.deepPurple;
+    final color = themeColor ?? Colors.grey[700]!;
     final useDarkText = _shouldUseDarkText(color);
     
     if (useDarkText) {

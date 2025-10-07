@@ -16,6 +16,7 @@ import 'services/player_background_service.dart';
 import 'services/persistent_storage_service.dart';
 import 'services/listening_stats_service.dart';
 import 'services/desktop_lyric_service.dart';
+import 'services/android_floating_lyric_service.dart';
 
 // 条件导入 SMTC（通过平台抽象层）
 import 'services/smtc_platform.dart';
@@ -137,6 +138,12 @@ void main() async {
   if (Platform.isWindows) {
     await DesktopLyricService().initialize();
     DeveloperModeService().addLog('🎤 桌面歌词服务已初始化');
+  }
+  
+  // 初始化Android悬浮歌词服务（仅Android）
+  if (Platform.isAndroid) {
+    await AndroidFloatingLyricService().initialize();
+    DeveloperModeService().addLog('📱 Android悬浮歌词服务已初始化');
   }
   
   runApp(const MyApp());

@@ -56,7 +56,7 @@ class PlayerBackground extends StatelessWidget {
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
-        final color = themeColor ?? Colors.deepPurple;
+        final color = themeColor ?? Colors.grey[700]!;
         
         return RepaintBoundary(
           child: Stack(
@@ -145,7 +145,7 @@ class PlayerBackground extends StatelessWidget {
     return ValueListenableBuilder<Color?>(
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
-        final color = themeColor ?? Colors.deepPurple;
+        final color = themeColor ?? Colors.grey[700]!;
         print('🎨 [PlayerBackground] 构建背景，主题色: $color');
         
         return RepaintBoundary(

@@ -12,6 +12,7 @@ import 'player_components/player_window_controls.dart';
 import 'player_components/player_background.dart';
 import 'player_components/player_song_info.dart';
 import 'player_components/player_lyrics_panel.dart';
+import 'player_components/player_karaoke_lyrics_panel.dart';
 import 'player_components/player_controls.dart';
 import 'player_components/player_playlist_panel.dart';
 import 'player_components/player_control_center.dart';
@@ -364,10 +365,10 @@ class _PlayerPageState extends State<PlayerPage> with WindowListener, TickerProv
                           child: const PlayerSongInfo(),
                         ),
                         
-                        // 右侧：歌词
+                        // 右侧：歌词（使用卡拉OK填充效果）
                         Expanded(
                           flex: 4,
-                          child: PlayerLyricsPanel(
+                          child: PlayerKaraokeLyricsPanel(
                             lyrics: _lyrics,
                             currentLyricIndex: _currentLyricIndex,
                             showTranslation: _showTranslation,

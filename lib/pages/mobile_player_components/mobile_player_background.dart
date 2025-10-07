@@ -59,7 +59,7 @@ class MobilePlayerBackground extends StatelessWidget {
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         // 确保总是有颜色显示，优先使用提取的主题色，回退到深紫色
-        final color = themeColor ?? Colors.deepPurple;
+        final color = themeColor ?? Colors.grey[700]!;
         
          return Stack(
            children: [
@@ -132,7 +132,7 @@ class MobilePlayerBackground extends StatelessWidget {
       valueListenable: PlayerService().themeColorNotifier,
       builder: (context, themeColor, child) {
         // 使用提取的主题色，回退到深紫色
-        final color = themeColor ?? Colors.deepPurple;
+        final color = themeColor ?? Colors.grey[700]!;
         
         return Container(
           decoration: BoxDecoration(

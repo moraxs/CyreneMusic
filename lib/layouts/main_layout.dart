@@ -12,7 +12,7 @@ import '../services/layout_preference_service.dart';
 import '../services/developer_mode_service.dart';
 import '../utils/page_visibility_notifier.dart';
 import '../utils/theme_manager.dart';
-import '../pages/auth/login_page.dart';
+import '../pages/auth/auth_page.dart';
 
 /// 主布局 - 包含侧边导航栏和内容区域
 class MainLayout extends StatefulWidget {
@@ -113,12 +113,7 @@ class _MainLayoutState extends State<MainLayout> {
       _showUserMenu();
     } else {
       // 未登录，跳转到登录页面
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const LoginPage(),
-        ),
-      ).then((_) {
+      showAuthDialog(context).then((_) {
         if (mounted) setState(() {});
       });
     }

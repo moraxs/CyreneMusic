@@ -242,8 +242,8 @@ class _CapsuleSliderState extends State<CapsuleSlider> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.deepPurple.withOpacity(0.8),
-                      Colors.deepPurple,
+                      Colors.grey[700]!.withOpacity(0.8),
+                      Colors.grey[700]!,
                     ],
                   ),
                 ),

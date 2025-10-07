@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'player_service.dart';
+import 'android_floating_lyric_service.dart';
 
 /// Android 媒体通知处理器
 /// 使用 audio_service 包实现 Android 系统通知栏的媒体控件
 class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   Timer? _updateTimer;  // 防抖定时器
   bool _updatePending = false;  // 是否有待处理的更新
+  Timer? _lyricUpdateTimer;  // 悬浮歌词更新定时器（后台持续运行）
   
   // 构造函数
   CyreneAudioHandler() {
@@ -18,13 +21,30 @@ class CyreneAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     // 监听播放器状态变化
     PlayerService().addListener(_onPlayerStateChanged);
     
+    // 启动悬浮歌词后台更新定时器（仅 Android）
+    if (Platform.isAndroid) {
+      _startLyricUpdateTimer();
+    }
+    
     print('✅ [AudioHandler] 初始化完成');
+  }
+  
+  /// 启动悬浮歌词后台更新定时器
+  void _startLyricUpdateTimer() {
+    // 每500ms更新一次悬浮歌词（即使应用在后台也会运行）
+    _lyricUpdateTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (Platform.isAndroid && AndroidFloatingLyricService().isVisible) {
+        PlayerService().updateFloatingLyricManually();
+      }
+    });
+    print('✅ [AudioHandler] 悬浮歌词后台更新定时器已启动');
   }
   
   @override
   Future<void> onTaskRemoved() async {
     // 清理定时器
     _updateTimer?.cancel();
+    _lyricUpdateTimer?.cancel();
     await super.onTaskRemoved();
   }
 
