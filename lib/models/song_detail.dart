@@ -30,6 +30,29 @@ class SongDetail {
 
   /// 从 JSON 创建 SongDetail 对象
   factory SongDetail.fromJson(Map<String, dynamic> json, {MusicSource? source}) {
+    // 🔧 安全获取歌词字段（兼容网易云和QQ音乐格式）
+    String lyricText = '';
+    String tlyricText = '';
+    
+    // 网易云音乐格式：lyric 和 tlyric 直接是字符串
+    // QQ音乐格式：可能是 Map（不应该直接传入，但做防御性处理）
+    final lyricValue = json['lyric'];
+    final tlyricValue = json['tlyric'];
+    
+    if (lyricValue is String) {
+      lyricText = lyricValue;
+    } else if (lyricValue is Map) {
+      // QQ音乐格式：{lyric: string, tylyric: string}
+      lyricText = (lyricValue['lyric'] is String) ? lyricValue['lyric'] : '';
+    }
+    
+    if (tlyricValue is String) {
+      tlyricText = tlyricValue;
+    } else if (tlyricValue is Map) {
+      // QQ音乐格式
+      tlyricText = (tlyricValue['tylyric'] is String) ? tlyricValue['tylyric'] : '';
+    }
+    
     return SongDetail(
       id: json['id'] ?? 0, // 支持 int 和 String
       name: json['name'] as String? ?? '',
@@ -39,8 +62,8 @@ class SongDetail {
       level: json['level'] as String? ?? '',
       size: json['size'] as String? ?? '',
       url: json['url'] as String? ?? '',
-      lyric: json['lyric'] as String? ?? '',
-      tlyric: json['tlyric'] as String? ?? '',
+      lyric: lyricText,
+      tlyric: tlyricText,
       source: source ?? MusicSource.netease,
     );
   }

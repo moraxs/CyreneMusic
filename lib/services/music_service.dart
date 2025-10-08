@@ -279,32 +279,47 @@ class MusicService extends ChangeNotifier {
         
         final data = json.decode(responseBody) as Map<String, dynamic>;
 
-        // 🔍 调试：打印后端返回的完整数据（包括歌词信息）
-        print('🔍 [MusicService] 后端返回的数据:');
+        // 🔍 调试：打印后端返回的完整数据（根据音乐源不同处理）
+        print('🔍 [MusicService] 后端返回的数据 (${source.name}):');
         print('   status: ${data['status']}');
-        print('   name: ${data['name']}');
-        print('   url: ${data['url']}');
-        print('   lyric 字段存在: ${data.containsKey('lyric')}');
-        print('   tlyric 字段存在: ${data.containsKey('tlyric')}');
-        if (data.containsKey('lyric')) {
-          final lyricContent = data['lyric'] as String?;
-          print('   ✅ lyric 类型: ${lyricContent.runtimeType}');
-          print('   ✅ lyric 长度: ${lyricContent?.length ?? 0}');
-          if (lyricContent != null && lyricContent.isNotEmpty) {
-            final preview = lyricContent.substring(0, lyricContent.length > 100 ? 100 : lyricContent.length);
-            print('   ✅ lyric 前100字符: $preview');
-          } else {
-            print('   ⚠️ lyric 为空或null');
+        
+        if (source == MusicSource.qq) {
+          // QQ音乐格式
+          print('   song 字段存在: ${data.containsKey('song')}');
+          if (data.containsKey('song')) {
+            final song = data['song'] as Map<String, dynamic>?;
+            print('   name: ${song?['name']}');
           }
+          print('   lyric 字段存在: ${data.containsKey('lyric')}');
+          if (data.containsKey('lyric')) {
+            final lyricData = data['lyric'];
+            print('   lyric 类型: ${lyricData.runtimeType}');
+            if (lyricData is Map) {
+              final lyricText = lyricData['lyric'];
+              print('   lyric.lyric 类型: ${lyricText.runtimeType}');
+              if (lyricText is String) {
+                print('   lyric.lyric 长度: ${lyricText.length}');
+              }
+            }
+          }
+          print('   music_urls 字段存在: ${data.containsKey('music_urls')}');
         } else {
-          print('   ❌ 后端响应中不包含 lyric 字段');
-        }
-        if (data.containsKey('tlyric')) {
-          final tlyricContent = data['tlyric'] as String?;
-          print('   ✅ tlyric 类型: ${tlyricContent.runtimeType}');
-          print('   ✅ tlyric 长度: ${tlyricContent?.length ?? 0}');
-        } else {
-          print('   ℹ️ 后端响应中不包含 tlyric 字段（可能无翻译）');
+          // 网易云/酷狗格式
+          print('   name: ${data['name']}');
+          print('   url: ${data['url']}');
+          print('   lyric 字段存在: ${data.containsKey('lyric')}');
+          print('   tlyric 字段存在: ${data.containsKey('tlyric')}');
+          if (data.containsKey('lyric')) {
+            final lyricContent = data['lyric'];
+            print('   ✅ lyric 类型: ${lyricContent.runtimeType}');
+            if (lyricContent is String) {
+              print('   ✅ lyric 长度: ${lyricContent.length}');
+              if (lyricContent.isNotEmpty && lyricContent.length > 100) {
+                final preview = lyricContent.substring(0, 100);
+                print('   ✅ lyric 前100字符: $preview');
+              }
+            }
+          }
         }
 
         if (data['status'] == 200) {
@@ -339,6 +354,22 @@ class MusicService extends ChangeNotifier {
               }
             }
             
+            // 安全获取歌词（后端返回的是 {lyric: string, tylyric: string}）
+            String lyricText = '';
+            String tlyricText = '';
+            if (lyricData != null) {
+              // 确保类型安全：检查是否为String
+              final lyricValue = lyricData['lyric'];
+              final tlyricValue = lyricData['tylyric'];
+              
+              lyricText = lyricValue is String ? lyricValue : '';
+              tlyricText = tlyricValue is String ? tlyricValue : '';
+              
+              print('🎵 [MusicService] QQ音乐歌词获取:');
+              print('   原文歌词: ${lyricText.isNotEmpty ? "${lyricText.length}字符" : "无"}');
+              print('   翻译歌词: ${tlyricText.isNotEmpty ? "${tlyricText.length}字符" : "无"}');
+            }
+            
             songDetail = SongDetail(
               id: song['mid'] ?? song['id'] ?? songId,
               name: song['name'] ?? '',
@@ -348,8 +379,8 @@ class MusicService extends ChangeNotifier {
               level: bitrate,
               size: '0', // QQ音乐不返回文件大小
               url: playUrl,
-              lyric: lyricData?['lyric'] ?? '',
-              tlyric: lyricData?['tylyric'] ?? '',
+              lyric: lyricText,
+              tlyric: tlyricText,
               source: source,
             );
           } else if (source == MusicSource.kugou) {

@@ -7,95 +7,312 @@ import '../services/auth_service.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 
-/// 从网易云导入歌单对话框
+/// 音乐平台枚举
+enum MusicPlatform {
+  netease('网易云音乐', '🎵'),
+  qq('QQ音乐', '🎶');
+
+  final String name;
+  final String icon;
+  const MusicPlatform(this.name, this.icon);
+}
+
+/// 从网易云/QQ音乐导入歌单对话框
 class ImportPlaylistDialog {
-  /// 显示导入歌单对话框
-  static Future<void> show(BuildContext context) async {
-    final controller = TextEditingController();
 
-    final playlistId = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.cloud_download, size: 24),
-            SizedBox(width: 12),
-            Text('从网易云导入歌单'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '请输入网易云歌单ID',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '可以从网易云歌单页面URL中获取\n例如: https://music.163.com/#/playlist?id=19723756',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                labelText: '歌单ID',
-                hintText: '例如: 19723756',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-              autofocus: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final id = controller.text.trim();
-              if (id.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请输入歌单ID')),
-                );
-                return;
-              }
-              Navigator.pop(context, id);
-            },
-            child: const Text('下一步'),
-          ),
-        ],
-      ),
-    );
-
-    if (playlistId != null && context.mounted) {
-      await _fetchAndImportPlaylist(context, playlistId);
+  /// 解析网易云音乐歌单URL，提取歌单ID
+  static String? _parseNeteasePlaylistId(String input) {
+    final trimmedInput = input.trim();
+    
+    // 如果输入的是纯数字ID，直接返回
+    if (RegExp(r'^\d+$').hasMatch(trimmedInput)) {
+      return trimmedInput;
+    }
+    
+    // 尝试从URL中解析ID
+    try {
+      // 支持的URL格式：
+      // https://music.163.com/#/playlist?id=2154199263&creatorId=1408148628
+      // https://music.163.com/playlist?id=2154199263&creatorId=1408148628
+      // http://music.163.com/#/playlist?id=2154199263
+      
+      final uri = Uri.parse(trimmedInput);
+      
+      // 检查是否是网易云音乐域名
+      if (!uri.host.contains('music.163.com')) {
+        return null;
+      }
+      
+      String? playlistId;
+      
+      // 首先检查主URL的查询参数
+      playlistId = uri.queryParameters['id'];
+      
+      // 如果主URL没有，检查fragment中的查询参数
+      if (playlistId == null && uri.fragment.isNotEmpty) {
+        // fragment可能包含路径和查询参数，如：/playlist?id=2154199263&creatorId=1408148628
+        final fragmentParts = uri.fragment.split('?');
+        if (fragmentParts.length > 1) {
+          // 解析fragment中的查询参数
+          final fragmentQuery = fragmentParts[1];
+          final fragmentParams = Uri.splitQueryString(fragmentQuery);
+          playlistId = fragmentParams['id'];
+        }
+      }
+      
+      // 也尝试直接用正则表达式从整个URL中匹配ID
+      if (playlistId == null) {
+        final idMatch = RegExp(r'[?&]id=(\d+)').firstMatch(trimmedInput);
+        if (idMatch != null) {
+          playlistId = idMatch.group(1);
+        }
+      }
+      
+      // 验证ID是否为纯数字
+      if (playlistId != null && RegExp(r'^\d+$').hasMatch(playlistId)) {
+        return playlistId;
+      }
+      
+      return null;
+    } catch (e) {
+      // URL解析失败，尝试正则表达式兜底
+      try {
+        final idMatch = RegExp(r'[?&]id=(\d+)').firstMatch(trimmedInput);
+        if (idMatch != null) {
+          return idMatch.group(1);
+        }
+      } catch (_) {
+        // 忽略正则表达式错误
+      }
+      return null;
     }
   }
 
-  /// 获取网易云歌单并导入
+  /// 解析QQ音乐歌单URL，提取歌单ID (dissid)
+  static String? _parseQQPlaylistId(String input) {
+    final trimmedInput = input.trim();
+    
+    // 如果输入的是纯数字ID，直接返回
+    if (RegExp(r'^\d+$').hasMatch(trimmedInput)) {
+      return trimmedInput;
+    }
+    
+    // 尝试从URL中解析ID
+    try {
+      // 支持的URL格式：
+      // https://y.qq.com/n/ryqq/playlist/8522515502
+      // https://y.qq.com/n/m/detail/taoge/index.html?id=8522515502
+      // https://c.y.qq.com/base/fcgi-bin/u?__=8522515502
+      
+      final uri = Uri.parse(trimmedInput);
+      
+      // 检查是否是QQ音乐域名
+      if (!uri.host.contains('qq.com')) {
+        return null;
+      }
+      
+      String? playlistId;
+      
+      // 从查询参数中提取
+      playlistId = uri.queryParameters['id'];
+      
+      // 从路径中提取 (形如 /n/ryqq/playlist/8522515502)
+      if (playlistId == null) {
+        final pathSegments = uri.pathSegments;
+        if (pathSegments.isNotEmpty) {
+          final lastSegment = pathSegments.last;
+          if (RegExp(r'^\d+$').hasMatch(lastSegment)) {
+            playlistId = lastSegment;
+          }
+        }
+      }
+      
+      // 正则表达式兜底
+      if (playlistId == null) {
+        final idMatch = RegExp(r'[\?&/](?:id=|playlist/)(\d+)').firstMatch(trimmedInput);
+        if (idMatch != null) {
+          playlistId = idMatch.group(1);
+        }
+      }
+      
+      // 验证ID是否为纯数字
+      if (playlistId != null && RegExp(r'^\d+$').hasMatch(playlistId)) {
+        return playlistId;
+      }
+      
+      return null;
+    } catch (e) {
+      // URL解析失败，尝试正则表达式兜底
+      try {
+        final idMatch = RegExp(r'[\?&/](?:id=|playlist/)(\d+)').firstMatch(trimmedInput);
+        if (idMatch != null) {
+          return idMatch.group(1);
+        }
+      } catch (_) {
+        // 忽略正则表达式错误
+      }
+      return null;
+    }
+  }
+
+  /// 显示导入歌单对话框
+  static Future<void> show(BuildContext context) async {
+    final controller = TextEditingController();
+    MusicPlatform selectedPlatform = MusicPlatform.netease;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.cloud_download, size: 24),
+              SizedBox(width: 12),
+              Text('导入歌单'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 平台选择
+              const Text(
+                '选择平台',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: MusicPlatform.values.map((platform) {
+                  final isSelected = selectedPlatform == platform;
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: ChoiceChip(
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(platform.icon),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                platform.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          if (selected) {
+                            setState(() {
+                              selectedPlatform = platform;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              
+              const SizedBox(height: 16),
+              const Text(
+                '输入歌单信息',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                selectedPlatform == MusicPlatform.netease
+                    ? '支持以下两种输入方式：\n• 直接输入歌单ID，如：19723756\n• 粘贴完整URL，如：https://music.163.com/#/playlist?id=19723756'
+                    : '支持以下两种输入方式：\n• 直接输入歌单ID，如：8522515502\n• 粘贴完整URL，如：https://y.qq.com/n/ryqq/playlist/8522515502',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  labelText: '歌单ID或URL',
+                  hintText: '例如: 19723756 或完整URL',
+                  border: OutlineInputBorder(),
+                ),
+                autofocus: true,
+                maxLines: 2,
+                minLines: 1,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final input = controller.text.trim();
+                if (input.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('请输入歌单ID或URL')),
+                  );
+                  return;
+                }
+                
+                // 尝试解析歌单ID
+                String? playlistId;
+                if (selectedPlatform == MusicPlatform.netease) {
+                  playlistId = _parseNeteasePlaylistId(input);
+                } else {
+                  playlistId = _parseQQPlaylistId(input);
+                }
+                
+                if (playlistId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('无效的${selectedPlatform.name}歌单ID或URL格式\n请检查输入是否正确'),
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                  return;
+                }
+                
+                Navigator.pop(context, {
+                  'platform': selectedPlatform,
+                  'playlistId': playlistId,
+                });
+              },
+              child: const Text('下一步'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && context.mounted) {
+      final platform = result['platform'] as MusicPlatform;
+      final playlistId = result['playlistId'] as String;
+      await _fetchAndImportPlaylist(context, platform, playlistId);
+    }
+  }
+
+  /// 获取歌单并导入
   static Future<void> _fetchAndImportPlaylist(
-      BuildContext context, String playlistId) async {
+      BuildContext context, MusicPlatform platform, String playlistId) async {
     // 显示加载对话框
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(
+      builder: (context) => Center(
         child: Card(
           child: Padding(
-            padding: EdgeInsets.all(24.0),
+            padding: const EdgeInsets.all(24.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('正在获取歌单信息...'),
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text('正在获取${platform.name}歌单信息...'),
               ],
             ),
           ),
@@ -105,8 +322,12 @@ class ImportPlaylistDialog {
 
     try {
       final baseUrl = UrlService().baseUrl;
+      final url = platform == MusicPlatform.netease
+          ? '$baseUrl/playlist?id=$playlistId&limit=1000'
+          : '$baseUrl/qq/playlist?id=$playlistId&limit=1000';
+      
       final response = await http.get(
-        Uri.parse('$baseUrl/playlist?id=$playlistId&limit=1000'),
+        Uri.parse(url),
       ).timeout(
         const Duration(seconds: 30),
         onTimeout: () => throw Exception('请求超时'),
@@ -120,10 +341,10 @@ class ImportPlaylistDialog {
 
         if (data['status'] == 200 && data['success'] == true) {
           final playlistData = data['data']['playlist'];
-          final neteasePlaylist = NeteasePlaylist.fromJson(playlistData);
+          final playlist = UniversalPlaylist.fromJson(playlistData, platform);
 
           // 显示选择目标歌单对话框
-          await _showSelectTargetPlaylistDialog(context, neteasePlaylist);
+          await _showSelectTargetPlaylistDialog(context, playlist);
         } else {
           throw Exception(data['msg'] ?? '获取歌单失败');
         }
@@ -152,7 +373,7 @@ class ImportPlaylistDialog {
 
   /// 显示选择目标歌单对话框
   static Future<void> _showSelectTargetPlaylistDialog(
-      BuildContext context, NeteasePlaylist neteasePlaylist) async {
+      BuildContext context, UniversalPlaylist sourcePlaylist) async {
     final playlistService = PlaylistService();
 
     // 确保已加载歌单列表
@@ -165,19 +386,19 @@ class ImportPlaylistDialog {
     final targetPlaylist = await showDialog<Playlist>(
       context: context,
       builder: (context) => _SelectTargetPlaylistDialog(
-        neteasePlaylist: neteasePlaylist,
+        sourcePlaylist: sourcePlaylist,
       ),
     );
 
     if (targetPlaylist != null && context.mounted) {
-      await _importTracks(context, neteasePlaylist, targetPlaylist);
+      await _importTracks(context, sourcePlaylist, targetPlaylist);
     }
   }
 
   /// 导入歌曲到目标歌单
   static Future<void> _importTracks(
     BuildContext context,
-    NeteasePlaylist neteasePlaylist,
+    UniversalPlaylist sourcePlaylist,
     Playlist targetPlaylist,
   ) async {
     final playlistService = PlaylistService();
@@ -189,7 +410,7 @@ class ImportPlaylistDialog {
       builder: (context) => WillPopScope(
         onWillPop: () async => false,
         child: _ImportProgressDialog(
-          neteasePlaylist: neteasePlaylist,
+          sourcePlaylist: sourcePlaylist,
           targetPlaylist: targetPlaylist,
         ),
       ),
@@ -199,7 +420,7 @@ class ImportPlaylistDialog {
       int successCount = 0;
       int failCount = 0;
 
-      for (final track in neteasePlaylist.tracks) {
+      for (final track in sourcePlaylist.tracks) {
         try {
           await playlistService.addTrackToPlaylist(
             targetPlaylist.id,
@@ -239,7 +460,17 @@ class ImportPlaylistDialog {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('歌单名称: ${neteasePlaylist.name}'),
+              Row(
+                children: [
+                  Text(sourcePlaylist.platform.icon),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text('来源: ${sourcePlaylist.platform.name}'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text('歌单名称: ${sourcePlaylist.name}'),
               const SizedBox(height: 8),
               Text('目标歌单: ${targetPlaylist.name}'),
               const SizedBox(height: 8),
@@ -276,17 +507,18 @@ class ImportPlaylistDialog {
   }
 }
 
-/// 网易云歌单数据模型
-class NeteasePlaylist {
-  final int id;
+/// 通用歌单数据模型（支持网易云和QQ音乐）
+class UniversalPlaylist {
+  final dynamic id;  // 网易云用int，QQ用String
   final String name;
   final String coverImgUrl;
   final String creator;
   final int trackCount;
   final String? description;
   final List<Track> tracks;
+  final MusicPlatform platform;
 
-  NeteasePlaylist({
+  UniversalPlaylist({
     required this.id,
     required this.name,
     required this.coverImgUrl,
@@ -294,39 +526,53 @@ class NeteasePlaylist {
     required this.trackCount,
     this.description,
     required this.tracks,
+    required this.platform,
   });
 
-  factory NeteasePlaylist.fromJson(Map<String, dynamic> json) {
+  factory UniversalPlaylist.fromJson(
+    Map<String, dynamic> json,
+    MusicPlatform platform,
+  ) {
     final List<dynamic> tracksJson = json['tracks'] ?? [];
+    
+    // 根据平台设置正确的MusicSource
+    final MusicSource source = platform == MusicPlatform.netease
+        ? MusicSource.netease
+        : MusicSource.qq;
+    
     final tracks = tracksJson.map((trackJson) {
       return Track(
-        id: trackJson['id'] ?? 0,
+        // QQ音乐使用songmid，网易云使用id
+        id: platform == MusicPlatform.qq
+            ? (trackJson['songmid'] ?? trackJson['id'] ?? '')
+            : (trackJson['id'] ?? 0),
         name: (trackJson['name'] ?? '未知歌曲') as String,
         artists: (trackJson['artists'] ?? '未知艺术家') as String,
         album: (trackJson['album'] ?? '未知专辑') as String,
         picUrl: (trackJson['picUrl'] ?? '') as String,
-        source: MusicSource.netease,
+        source: source,  // 🔥 关键：确保标记正确的来源
       );
     }).toList();
 
-    return NeteasePlaylist(
-      id: json['id'] as int? ?? 0,
+    return UniversalPlaylist(
+      id: json['id'],
       name: (json['name'] ?? '未命名歌单') as String,
       coverImgUrl: (json['coverImgUrl'] ?? '') as String,
       creator: (json['creator'] ?? '未知') as String,
       trackCount: json['trackCount'] as int? ?? 0,
       description: json['description'] as String?,
       tracks: tracks,
+      platform: platform,
     );
   }
 }
 
 /// 选择目标歌单对话框
 class _SelectTargetPlaylistDialog extends StatefulWidget {
-  final NeteasePlaylist neteasePlaylist;
+  final UniversalPlaylist sourcePlaylist;
 
   const _SelectTargetPlaylistDialog({
-    required this.neteasePlaylist,
+    required this.sourcePlaylist,
   });
 
   @override
@@ -379,7 +625,7 @@ class _SelectTargetPlaylistDialogState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 网易云歌单信息
+            // 源歌单信息
             Card(
               color: colorScheme.primaryContainer.withOpacity(0.3),
               child: Padding(
@@ -389,7 +635,7 @@ class _SelectTargetPlaylistDialogState
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: Image.network(
-                        widget.neteasePlaylist.coverImgUrl,
+                        widget.sourcePlaylist.coverImgUrl,
                         width: 60,
                         height: 60,
                         fit: BoxFit.cover,
@@ -406,22 +652,30 @@ class _SelectTargetPlaylistDialogState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            widget.neteasePlaylist.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          Row(
+                            children: [
+                              Text(widget.sourcePlaylist.platform.icon),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  widget.sourcePlaylist.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '创建者: ${widget.neteasePlaylist.creator}',
+                            '创建者: ${widget.sourcePlaylist.creator}',
                             style: const TextStyle(fontSize: 12),
                           ),
                           Text(
-                            '歌曲数量: ${widget.neteasePlaylist.tracks.length} 首',
+                            '歌曲数量: ${widget.sourcePlaylist.tracks.length} 首',
                             style: const TextStyle(fontSize: 12),
                           ),
                         ],
@@ -526,7 +780,7 @@ class _SelectTargetPlaylistDialogState
   /// 显示创建歌单对话框
   Future<Playlist?> _showCreatePlaylistDialog() async {
     final controller = TextEditingController(
-      text: widget.neteasePlaylist.name, // 默认使用网易云歌单名称
+      text: widget.sourcePlaylist.name, // 默认使用源歌单名称
     );
 
     final name = await showDialog<String>(
@@ -583,11 +837,11 @@ class _SelectTargetPlaylistDialogState
 
 /// 导入进度对话框
 class _ImportProgressDialog extends StatelessWidget {
-  final NeteasePlaylist neteasePlaylist;
+  final UniversalPlaylist sourcePlaylist;
   final Playlist targetPlaylist;
 
   const _ImportProgressDialog({
-    required this.neteasePlaylist,
+    required this.sourcePlaylist,
     required this.targetPlaylist,
   });
 
@@ -607,9 +861,16 @@ class _ImportProgressDialog extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 8),
-              Text(
-                '从「${neteasePlaylist.name}」',
-                style: Theme.of(context).textTheme.bodySmall,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(sourcePlaylist.platform.icon),
+                  const SizedBox(width: 4),
+                  Text(
+                    '从「${sourcePlaylist.name}」',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
               ),
               Text(
                 '导入到「${targetPlaylist.name}」',
@@ -617,7 +878,7 @@ class _ImportProgressDialog extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                '共 ${neteasePlaylist.tracks.length} 首歌曲',
+                '共 ${sourcePlaylist.tracks.length} 首歌曲',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.bold,
@@ -630,4 +891,3 @@ class _ImportProgressDialog extends StatelessWidget {
     );
   }
 }
-
