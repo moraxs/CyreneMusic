@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../widgets/custom_title_bar.dart';
 import '../widgets/mini_player.dart';
 import '../pages/home_page.dart';
+import '../pages/discover_page.dart';
 import '../pages/history_page.dart';
 import '../pages/my_page.dart';
 import '../pages/settings_page.dart';
@@ -22,14 +23,18 @@ class MainLayout extends StatefulWidget {
   State<MainLayout> createState() => _MainLayoutState();
 }
 
-class _MainLayoutState extends State<MainLayout> {
+class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
-  bool _isRailExtended = false;
+  // NavigationDrawer 固定宽度与 NavigationRail 展开状态一致（Material 3 默认 256）
+  static const double _drawerWidth = 256.0;
+  static const double _collapsedWidth = 80.0; // 折叠状态宽度，仅显示图标
+  bool _isDrawerCollapsed = false; // 抽屉是否处于折叠状态（默认展开）
 
   // 页面列表
   List<Widget> get _pages {
     final pages = <Widget>[
       const HomePage(),
+      const DiscoverPage(),
       const HistoryPage(),
       const MyPage(), // 我的（歌单+听歌统计）
       const SettingsPage(),
@@ -233,14 +238,7 @@ class _MainLayoutState extends State<MainLayout> {
             child: Row(
               children: [
                 // 侧边导航栏
-                _buildNavigationRail(colorScheme),
-                
-                // 分割线
-                VerticalDivider(
-                  width: 1,
-                  thickness: 1,
-                  color: colorScheme.outlineVariant,
-                ),
+                _buildNavigationDrawer(colorScheme),
                 
                 // 内容区域
                 Expanded(
@@ -296,6 +294,11 @@ class _MainLayoutState extends State<MainLayout> {
             label: '首页',
           ),
           const NavigationDestination(
+            icon: Icon(Icons.explore_outlined),
+            selectedIcon: Icon(Icons.explore),
+            label: '发现',
+          ),
+          const NavigationDestination(
             icon: Icon(Icons.history_outlined),
             selectedIcon: Icon(Icons.history),
             label: '历史',
@@ -326,97 +329,184 @@ class _MainLayoutState extends State<MainLayout> {
     );
   }
 
-  /// 构建侧边导航栏
-  Widget _buildNavigationRail(ColorScheme colorScheme) {
-    return NavigationRail(
-      extended: _isRailExtended,
-      backgroundColor: colorScheme.surface,
-      selectedIndex: _selectedIndex,
-      onDestinationSelected: (int index) {
-        // 如果点击的是设置按钮，触发开发者模式检测
-        if (index == 3) {
-          DeveloperModeService().onSettingsClicked();
-        }
-        
-        setState(() {
-          _selectedIndex = index;
-        });
-        // 通知页面切换
-        PageVisibilityNotifier().setCurrentPage(index);
-      },
-      labelType: _isRailExtended 
-          ? NavigationRailLabelType.none 
-          : NavigationRailLabelType.all,
-      leading: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        child: FloatingActionButton(
-          elevation: 0,
-          onPressed: () {
-            setState(() {
-              _isRailExtended = !_isRailExtended;
-            });
-          },
-          child: Icon(_isRailExtended ? Icons.menu_open : Icons.menu),
-        ),
-      ),
-        destinations: [
-          const NavigationRailDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: Text('首页'),
-          ),
-          const NavigationRailDestination(
-            icon: Icon(Icons.history_outlined),
-            selectedIcon: Icon(Icons.history),
-            label: Text('历史'),
-          ),
-          const NavigationRailDestination(
-            icon: Icon(Icons.person_outlined),
-            selectedIcon: Icon(Icons.person),
-            label: Text('我的'),
-          ),
-          const NavigationRailDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: Text('设置'),
-          ),
-          // 开发者模式导航项（动态显示）
-          if (DeveloperModeService().isDeveloperMode)
-            const NavigationRailDestination(
-              icon: Icon(Icons.code),
-              selectedIcon: Icon(Icons.code),
-              label: Text('Dev'),
+  /// 构建侧边导航抽屉（Material Design 3 NavigationDrawer）
+  Widget _buildNavigationDrawer(ColorScheme colorScheme) {
+    final bool isCollapsed = _isDrawerCollapsed;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOutCubic,
+      width: isCollapsed ? _collapsedWidth : _drawerWidth,
+      child: Column(
+        children: [
+          // 顶部折叠/展开按钮
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0, left: 8.0, right: 8.0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                onPressed: () {
+                  setState(() {
+                    _isDrawerCollapsed = !_isDrawerCollapsed;
+                  });
+                },
+                icon: AnimatedRotation(
+                  turns: isCollapsed ? 0.0 : 0.5, // 旋转 180°
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  child: const Icon(Icons.chevron_left),
+                ),
+                tooltip: isCollapsed ? '展开' : '收起',
+              ),
             ),
-        ],
-      // 可以添加底部的额外按钮
-      trailing: Expanded(
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
+          ),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+              child: isCollapsed
+                  ? KeyedSubtree(
+                      key: const ValueKey('collapsed'),
+                      child: _buildCollapsedDestinations(colorScheme),
+                    )
+                  : KeyedSubtree(
+                      key: const ValueKey('expanded'),
+                      child: Theme(
+                        data: Theme.of(context).copyWith(
+                          navigationDrawerTheme: const NavigationDrawerThemeData(
+                            backgroundColor: Colors.transparent,
+                            surfaceTintColor: Colors.transparent,
+                          ),
+                        ),
+                        child: NavigationDrawer(
+                          selectedIndex: _selectedIndex,
+                          onDestinationSelected: (int index) {
+                            // 如果点击的是设置按钮，触发开发者模式检测
+                            if (index == 3) {
+                              DeveloperModeService().onSettingsClicked();
+                            }
+
+                            setState(() {
+                              _selectedIndex = index;
+                            });
+                            // 通知页面切换
+                            PageVisibilityNotifier().setCurrentPage(index);
+                          },
+                          children: [
+                            const SizedBox(height: 8),
+                            const NavigationDrawerDestination(
+                              icon: Icon(Icons.home_outlined),
+                              selectedIcon: Icon(Icons.home),
+                              label: Text('首页'),
+                            ),
+                            const NavigationDrawerDestination(
+                              icon: Icon(Icons.explore_outlined),
+                              selectedIcon: Icon(Icons.explore),
+                              label: Text('发现'),
+                            ),
+                            const NavigationDrawerDestination(
+                              icon: Icon(Icons.history_outlined),
+                              selectedIcon: Icon(Icons.history),
+                              label: Text('历史'),
+                            ),
+                            const NavigationDrawerDestination(
+                              icon: Icon(Icons.person_outlined),
+                              selectedIcon: Icon(Icons.person),
+                              label: Text('我的'),
+                            ),
+                            const NavigationDrawerDestination(
+                              icon: Icon(Icons.settings_outlined),
+                              selectedIcon: Icon(Icons.settings),
+                              label: Text('设置'),
+                            ),
+                            if (DeveloperModeService().isDeveloperMode)
+                              const NavigationDrawerDestination(
+                                icon: Icon(Icons.code),
+                                selectedIcon: Icon(Icons.code),
+                                label: Text('Dev'),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+          // 底部用户头像入口（与原 trailing 行为一致）
+          Padding(
             padding: const EdgeInsets.only(bottom: 20.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_isRailExtended)
-                  const Divider()
-                else
-                  Container(),
-                Tooltip(
-                  message: AuthService().isLoggedIn ? '用户中心' : '登录',
-                  child: InkWell(
-                    onTap: _handleUserButtonTap,
-                    borderRadius: BorderRadius.circular(20),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: _buildUserAvatar(size: 32),
+            child: Tooltip(
+              message: AuthService().isLoggedIn ? '用户中心' : '登录',
+              child: InkWell(
+                onTap: _handleUserButtonTap,
+                borderRadius: BorderRadius.circular(28),
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: _buildUserAvatar(size: 40),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 折叠状态下仅显示图标的目的地列表
+  Widget _buildCollapsedDestinations(ColorScheme colorScheme) {
+    final List<_CollapsedItem> items = [
+      _CollapsedItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: '首页'),
+      _CollapsedItem(icon: Icons.explore_outlined, selectedIcon: Icons.explore, label: '发现'),
+      _CollapsedItem(icon: Icons.history_outlined, selectedIcon: Icons.history, label: '历史'),
+      _CollapsedItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: '我的'),
+      _CollapsedItem(icon: Icons.settings_outlined, selectedIcon: Icons.settings, label: '设置'),
+    ];
+    if (DeveloperModeService().isDeveloperMode) {
+      items.add(_CollapsedItem(icon: Icons.code, selectedIcon: Icons.code, label: 'Dev'));
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final bool isSelected = _selectedIndex == index;
+        final item = items[index];
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
+          child: Tooltip(
+            message: item.label,
+            child: Material(
+              color: isSelected ? colorScheme.primaryContainer : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () {
+                  if (index == 3) {
+                    DeveloperModeService().onSettingsClicked();
+                  }
+                  setState(() {
+                    _selectedIndex = index;
+                  });
+                  PageVisibilityNotifier().setCurrentPage(index);
+                },
+                child: SizedBox(
+                  height: 48,
+                  child: Center(
+                    child: Icon(
+                      isSelected ? item.selectedIcon : item.icon,
+                      color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -450,4 +540,11 @@ class _MainLayoutState extends State<MainLayout> {
       ),
     );
   }
+}
+
+class _CollapsedItem {
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  const _CollapsedItem({required this.icon, required this.selectedIcon, required this.label});
 }

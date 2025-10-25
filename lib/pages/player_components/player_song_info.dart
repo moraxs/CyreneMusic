@@ -5,6 +5,8 @@ import '../../services/player_background_service.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/search_widget.dart';
+import '../../services/netease_artist_service.dart';
+import '../artist_detail_page.dart';
 
 /// 播放器歌曲信息面板
 /// 显示专辑封面、歌曲名称、艺术家和专辑信息
@@ -133,7 +135,7 @@ class PlayerSongInfo extends StatelessWidget {
             const SizedBox(height: 12),
             
             // 艺术家（多个可点击）
-            _buildArtistsRow(context, artists, subtitleColor),
+            _buildArtistsRow(context, artists, subtitleColor, song),
             
             // 专辑（可点击）
             if (album.isNotEmpty) ...[
@@ -176,7 +178,7 @@ class PlayerSongInfo extends StatelessWidget {
   }
 
   /// 构建多个艺术家的可点击行
-  Widget _buildArtistsRow(BuildContext context, List<String> artists, Color baseColor) {
+  Widget _buildArtistsRow(BuildContext context, List<String> artists, Color baseColor, SongDetail? song) {
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: 0,
@@ -190,7 +192,7 @@ class PlayerSongInfo extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             InkWell(
-              onTap: () => _searchInDialog(context, artist),
+              onTap: () => _onArtistTap(context, artist, song),
               borderRadius: BorderRadius.circular(4),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -214,6 +216,41 @@ class PlayerSongInfo extends StatelessWidget {
           ],
         );
       }).toList(),
+    );
+  }
+
+  Future<void> _onArtistTap(BuildContext context, String artistName, SongDetail? song) async {
+    // 仅在网易云音乐来源时跳转歌手详情，否则沿用搜索
+    if (song?.source != MusicSource.netease) {
+      _searchInDialog(context, artistName);
+      return;
+    }
+    // 解析歌手ID（后端无返回ID时，通过搜索解析）
+    final id = await NeteaseArtistDetailService().resolveArtistIdByName(artistName);
+    if (id == null) {
+      _searchInDialog(context, artistName);
+      return;
+    }
+    if (!context.mounted) return;
+    // 悬浮窗展示（与搜索一致的 Dialog 样式）
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 800, maxHeight: 700),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: ArtistDetailContent(artistId: id),
+          ),
+        ),
+      ),
     );
   }
 

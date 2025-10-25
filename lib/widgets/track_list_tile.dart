@@ -10,12 +10,14 @@ class TrackListTile extends StatefulWidget {
   final Track track;
   final int? index;
   final VoidCallback? onTap;
+  final bool showIndex;
 
   const TrackListTile({
     super.key,
     required this.track,
     this.index,
     this.onTap,
+    this.showIndex = true, // 默认显示索引
   });
 
   @override
@@ -76,7 +78,7 @@ class _TrackListTileState extends State<TrackListTile> {
         mainAxisSize: MainAxisSize.min,
         children: [
           // 排名
-          if (widget.index != null)
+          if (widget.index != null && widget.showIndex)
             SizedBox(
               width: 32,
               child: Text(
