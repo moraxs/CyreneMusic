@@ -20,6 +20,31 @@ class NeteaseArtistDetailService extends ChangeNotifier {
   factory NeteaseArtistDetailService() => _instance;
   NeteaseArtistDetailService._internal();
 
+  /// 搜索歌手列表
+  Future<List<NeteaseArtistBrief>> searchArtists(String keywords, {int limit = 20}) async {
+    try {
+      if (keywords.trim().isEmpty) return [];
+      final baseUrl = UrlService().baseUrl;
+      final url = '$baseUrl/artist/search';
+      final resp = await http
+          .post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: {'keywords': keywords, 'limit': '$limit'},
+          )
+          .timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) return [];
+      final data = json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+      if (data['status'] != 200) return [];
+      final resultList = (data['result'] as List<dynamic>? ?? [])
+          .map((e) => NeteaseArtistBrief.fromJson(e as Map<String, dynamic>))
+          .toList();
+      return resultList;
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// 通过歌手名查ID（优先精确匹配）
   Future<int?> resolveArtistIdByName(String name) async {
     try {

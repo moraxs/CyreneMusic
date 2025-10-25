@@ -942,7 +942,11 @@ class _SettingsPageState extends State<SettingsPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('后端地址: $baseUrl'),
+              Text(
+                UrlService().isUsingOfficialSource
+                    ? '官方源'
+                    : '后端地址: $baseUrl',
+              ),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),

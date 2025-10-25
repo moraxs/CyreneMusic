@@ -1100,6 +1100,7 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
         final cardHeight = constraints.maxHeight;
         final coverSize = (cardHeight * 0.65).clamp(120.0, 160.0);
         final cardWidth = coverSize;
+        var isHovering = false;
         
         return Container(
           width: cardWidth,
@@ -1124,74 +1125,94 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // 专辑封面
-                  Stack(
-                    children: [
-                      CachedNetworkImage(
-                        imageUrl: track.picUrl,
-                        width: coverSize,
-                        height: coverSize,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          width: coverSize,
-                          height: coverSize,
-                          color: colorScheme.surfaceContainerHighest,
-                          child: const Center(
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                  StatefulBuilder(
+                    builder: (context, setHoverState) {
+                      return MouseRegion(
+                        onEnter: (_) => setHoverState(() => isHovering = true),
+                        onExit: (_) => setHoverState(() => isHovering = false),
+                        child: Stack(
+                          children: [
+                            AnimatedScale(
+                              scale: isHovering ? 1.1 : 1.0,
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOut,
+                              child: CachedNetworkImage(
+                                imageUrl: track.picUrl,
+                                width: coverSize,
+                                height: coverSize,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Container(
+                                  width: coverSize,
+                                  height: coverSize,
+                                  color: colorScheme.surfaceContainerHighest,
+                                  child: const Center(
+                                    child: SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    ),
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) => Container(
+                                  width: coverSize,
+                                  height: coverSize,
+                                  color: colorScheme.surfaceContainerHighest,
+                                  child: Icon(
+                                    Icons.music_note,
+                                    size: coverSize * 0.3,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        errorWidget: (context, url, error) => Container(
-                          width: coverSize,
-                          height: coverSize,
-                          color: colorScheme.surfaceContainerHighest,
-                          child: Icon(
-                            Icons.music_note,
-                            size: coverSize * 0.3,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                      // 排名标签
-                      Positioned(
-                        top: 4,
-                        left: 4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: rank < 3 
-                                ? colorScheme.primary 
-                                : colorScheme.secondaryContainer,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '${rank + 1}',
-                            style: TextStyle(
-                              color: rank < 3 
-                                  ? colorScheme.onPrimary 
-                                  : colorScheme.onSecondaryContainer,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                            // 排名标签
+                            Positioned(
+                              top: 4,
+                              left: 4,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: rank < 3 
+                                      ? colorScheme.primary 
+                                      : colorScheme.secondaryContainer,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '${rank + 1}',
+                                  style: TextStyle(
+                                    color: rank < 3 
+                                        ? colorScheme.onPrimary 
+                                        : colorScheme.onSecondaryContainer,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ),
-                      // 播放按钮覆盖层
-                      Positioned.fill(
-                        child: Container(
-                          color: Colors.black.withOpacity(0),
-                          child: Center(
-                            child: Icon(
-                              Icons.play_circle_outline,
-                              size: coverSize * 0.3,
-                              color: Colors.white.withOpacity(0.9),
+                            // 播放按钮覆盖层（悬停时显示）
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                ignoring: true,
+                                child: AnimatedOpacity(
+                                  opacity: isHovering ? 1.0 : 0.0,
+                                  duration: const Duration(milliseconds: 150),
+                                  child: Container(
+                                    color: Colors.black.withOpacity(0),
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.play_arrow,
+                                        size: coverSize * 0.28,
+                                        color: Colors.white.withOpacity(0.95),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                   // 歌曲信息 - 使用 Expanded 而不是固定高度，避免溢出
                   Expanded(

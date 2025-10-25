@@ -1,0 +1,252 @@
+* {
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  box-sizing: border-box;
+  -webkit-user-drag: none;
+  ::after {
+    box-sizing: border-box;
+  }
+  &:focus {
+    outline: none;
+  }
+}
+
+body {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+// text-hidden
+.text-hidden {
+  display: -webkit-box;
+  overflow: hidden;
+  word-break: break-all;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+// tabs
+.n-tabs {
+  width: 100%;
+  --n-tab-border-radius: 6px !important;
+  .n-tabs-nav {
+    position: relative;
+  }
+}
+
+.n-switch {
+  &.n-switch--active {
+    .n-switch__rail {
+      background-color: rgba(var(--primary), 0.8);
+    }
+  }
+}
+
+// modal
+.n-modal {
+  max-width: calc(100vw - 40px);
+  border-radius: 8px;
+}
+.n-modal-mask {
+  backdrop-filter: blur(16px);
+}
+.n-modal-scroll-content {
+  justify-content: center;
+}
+
+// drawer
+.n-drawer-mask {
+  backdrop-filter: blur(20px);
+}
+
+// dropdown
+.n-dropdown {
+  --n-border-radius: 8px !important;
+}
+
+// n-message
+.n-message-container {
+  bottom: 90px !important;
+  .n-message-wrapper {
+    .n-message {
+      border-radius: 12px;
+    }
+  }
+}
+
+// slider
+.n-slider {
+  .n-slider-rail {
+    backdrop-filter: blur(10px);
+  }
+}
+
+// popover
+.n-popover {
+  border-radius: 8px !important;
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+  &:not(.n-popover--raw) {
+    color: var(--primary-hex);
+  }
+}
+
+// layout-toggle-bar
+.n-layout-toggle-bar {
+  height: 44px !important;
+  top: calc(50% - 22px) !important;
+  .n-layout-toggle-bar__top,
+  .n-layout-toggle-bar__bottom {
+    height: 24px !important;
+  }
+  .n-layout-toggle-bar__bottom {
+    top: 20px !important;
+  }
+}
+
+// n-scrollbar
+.n-scrollbar {
+  .n-scrollbar-rail {
+    right: 0 !important;
+  }
+  .n-scrollbar-rail__scrollbar {
+    right: 0;
+    transition:
+      width 0.3s,
+      background-color 0.2s var(--n-scrollbar-bezier) !important;
+    &:hover {
+      width: 8px;
+    }
+  }
+}
+
+// notification
+.n-notification {
+  --n-border-radius: 8px !important;
+}
+
+// image
+.n-image {
+  width: 100%;
+  height: 100%;
+  .cover-loading {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    .loading-img {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 1 !important;
+    }
+  }
+  img {
+    transition: all 0.3s;
+  }
+}
+
+// image-preview
+.n-image-preview-container {
+  .n-image-preview-overlay {
+    backdrop-filter: blur(16px);
+  }
+  .n-image-preview-toolbar {
+    .n-base-icon {
+      padding: 0;
+      margin: 0 8px;
+    }
+  }
+}
+
+// skeleton
+.n-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(var(--primary), 0.08) 25%,
+    rgba(var(--primary), 0.14) 37%,
+    rgba(var(--primary), 0.08) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-loading 1.4s ease infinite;
+}
+
+// n-back-top
+.n-back-top {
+  --n-height: 42px !important;
+  --n-width: 42px !important;
+  border: 1px solid rgba(var(--primary), 0.28);
+}
+
+// select
+.n-select {
+  .n-base-selection {
+    .n-base-selection-label {
+      background-color: var(--n-border-color);
+    }
+  }
+}
+
+// alert
+.n-alert {
+  --n-border-radius: 8px !important;
+}
+
+// tag
+.n-tag {
+  font-size: 13px;
+  padding: 0 16px;
+  line-height: 0;
+  cursor: pointer;
+  transition:
+    transform 0.3s,
+    background-color 0.3s,
+    color 0.3s;
+  background-color: rgba(var(--primary), 0.08);
+  &.choose {
+    background-color: rgba(var(--primary), 0.28);
+    color: var(--primary-hex);
+  }
+  &:hover {
+    background-color: rgba(var(--primary), 0.28);
+    color: var(--primary-hex);
+  }
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+// input
+.n-input-number {
+  width: 100%;
+}
+
+::selection {
+  background-color: var(--primary-hex);
+  color: var(--background-hex);
+}
+
+// markdown
+.markdown-body {
+  --bgColor-default: var(--background-hex) !important;
+  --bgColor-muted: var(--background-hex) !important;
+  --fgColor-default: var(--n-text-color) !important;
+  margin-top: 12px !important;
+  padding: 20px;
+  border-radius: 8px;
+}
