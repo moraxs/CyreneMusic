@@ -23,6 +23,7 @@ import 'listening_stats_service.dart';
 import 'desktop_lyric_service.dart';
 import 'android_floating_lyric_service.dart';
 import 'player_background_service.dart';
+import 'local_library_service.dart';
 import 'dart:async' as async_lib;
 import 'dart:async' show TimeoutException;
 
@@ -220,6 +221,48 @@ class PlayerService extends ChangeNotifier {
         } else {
           print('⚠️ [PlayerService] 缓存文件无效，从网络获取');
         }
+      }
+
+      // 如果是本地文件，直接走本地播放
+      if (track.source == MusicSource.local) {
+        await _cleanupCurrentTempFile();
+        _state = PlayerState.loading;
+        _currentTrack = track;
+        _errorMessage = null;
+        notifyListeners();
+
+        final filePath = track.id is String ? track.id as String : '';
+        if (filePath.isEmpty || !(await File(filePath).exists())) {
+          _state = PlayerState.error;
+          _errorMessage = '本地文件不存在';
+          notifyListeners();
+          return;
+        }
+
+        // 从本地服务取歌词
+        final lyricText = LocalLibraryService().getLyricByTrackId(filePath);
+
+        _currentSong = SongDetail(
+          id: filePath,
+          name: track.name,
+          pic: track.picUrl,
+          arName: track.artists,
+          alName: track.album,
+          level: 'local',
+          size: '',
+          url: filePath,
+          lyric: lyricText,
+          tlyric: '',
+          source: MusicSource.local,
+        );
+
+        notifyListeners();
+        _loadLyricsForFloatingDisplay();
+
+        await _audioPlayer.play(ap.DeviceFileSource(filePath));
+        print('✅ [PlayerService] 播放本地文件: $filePath');
+        _extractThemeColorInBackground(track.picUrl);
+        return;
       }
 
       // 2. 从网络获取歌曲详情

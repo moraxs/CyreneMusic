@@ -73,6 +73,9 @@ dependencies:
   # Cached network image for better performance
   cached_network_image: ^3.3.0
   
+  # QR code generator (for NetEase login)
+  qr_flutter: ^4.1.0
+  
   # Permission handler for Android runtime permissions
   permission_handler: ^11.0.0
   

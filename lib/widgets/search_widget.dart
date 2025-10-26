@@ -3,6 +3,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
 import '../models/merged_track.dart';
 import '../services/search_service.dart';
+import '../services/netease_artist_service.dart';
+import '../pages/artist_detail_page.dart';
+import '../pages/album_detail_page.dart';
 import '../services/player_service.dart';
 import '../services/auth_service.dart';
 import '../pages/auth/auth_page.dart';
@@ -25,6 +28,17 @@ class SearchWidget extends StatefulWidget {
 class _SearchWidgetState extends State<SearchWidget> {
   final TextEditingController _searchController = TextEditingController();
   final SearchService _searchService = SearchService();
+  int _currentTabIndex = 0;
+
+  // 歌手搜索状态
+  List<NeteaseArtistBrief> _artistResults = [];
+  bool _artistLoading = false;
+  String? _artistError;
+  // 二级页面（面包屑）状态
+  int? _secondaryArtistId;
+  String? _secondaryArtistName;
+  int? _secondaryAlbumId;
+  String? _secondaryAlbumName;
   
   @override
   void initState() {
@@ -107,6 +121,38 @@ class _SearchWidgetState extends State<SearchWidget> {
     final keyword = _searchController.text.trim();
     if (keyword.isNotEmpty) {
       _searchService.search(keyword);
+      if (_currentTabIndex == 1) {
+        _searchArtists(keyword);
+      }
+    }
+  }
+
+  void _triggerArtistSearchIfNeeded() {
+    final keyword = _searchController.text.trim();
+    if (keyword.isNotEmpty) {
+      _searchArtists(keyword);
+    }
+  }
+
+  Future<void> _searchArtists(String keyword) async {
+    setState(() {
+      _artistLoading = true;
+      _artistError = null;
+      _artistResults = [];
+    });
+    try {
+      final results = await NeteaseArtistDetailService().searchArtists(keyword, limit: 20);
+      if (!mounted) return;
+      setState(() {
+        _artistResults = results;
+        _artistLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _artistLoading = false;
+        _artistError = e.toString();
+      });
     }
   }
 
@@ -115,76 +161,168 @@ class _SearchWidgetState extends State<SearchWidget> {
     final colorScheme = Theme.of(context).colorScheme;
     final searchResult = _searchService.searchResult;
 
-    return Column(
+    return Stack(
       children: [
-        // 搜索栏
-        Container(
-          padding: const EdgeInsets.all(16.0),
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: widget.onClose,
-                tooltip: '返回',
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: '搜索歌曲、歌手...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              _searchService.clear();
-                              setState(() {});
-                            },
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    filled: true,
-                    fillColor: colorScheme.surfaceContainerHighest,
+        Column(
+          children: [
+            // 搜索栏
+            Container(
+              padding: const EdgeInsets.all(16.0),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
                   ),
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: (_) => _performSearch(),
-                  onChanged: (_) => setState(() {}),
+                ],
+              ),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: widget.onClose,
+                    tooltip: '返回',
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: '搜索歌曲、歌手...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _searchService.clear();
+                                  setState(() {});
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: colorScheme.surfaceContainerHighest,
+                      ),
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => _performSearch(),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _performSearch,
+                    child: const Text('搜索'),
+                  ),
+                ],
+              ),
+            ),
+
+            // 选项卡 + 结果区域
+            Expanded(
+              child: DefaultTabController(
+                length: 2,
+                child: Column(
+                  children: [
+                    TabBar(
+                      onTap: (index) {
+                        setState(() {
+                          _currentTabIndex = index;
+                        });
+                        if (index == 1) _triggerArtistSearchIfNeeded();
+                      },
+                      tabs: const [
+                        Tab(text: '歌曲'),
+                        Tab(text: '歌手'),
+                      ],
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          _buildSongResults(searchResult),
+                          _buildArtistResults(),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _performSearch,
-                child: const Text('搜索'),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
 
-        // 搜索结果
-        Expanded(
-          child: _buildSearchResults(searchResult),
-        ),
+        // 覆盖搜索栏的二级详情层（歌手/专辑）
+        if (_secondaryArtistId != null || _secondaryAlbumId != null)
+          Positioned.fill(
+            child: Material(
+              color: colorScheme.surface,
+              child: Column(
+                children: [
+                  // 顶部面包屑栏
+                  SafeArea(
+                    bottom: false,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back),
+                            onPressed: () {
+                              setState(() {
+                                if (_secondaryAlbumId != null) {
+                                  _secondaryAlbumId = null;
+                                } else {
+                                  _secondaryArtistId = null;
+                                  _secondaryArtistName = null;
+                                }
+                              });
+                            },
+                            tooltip: '返回',
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              _secondaryAlbumId != null
+                                  ? (_secondaryAlbumName ?? '专辑详情')
+                                  : (_secondaryArtistName ?? '歌手详情'),
+                              style: Theme.of(context).textTheme.titleMedium,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  // 内容
+                  Expanded(
+                    child: _secondaryAlbumId != null
+                        ? AlbumDetailPage(albumId: _secondaryAlbumId!, embedded: true)
+                        : ArtistDetailContent(
+                            artistId: _secondaryArtistId!,
+                            onOpenAlbum: (albumId) {
+                              setState(() {
+                                _secondaryAlbumId = albumId;
+                                _secondaryAlbumName = null;
+                              });
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
 
-  Widget _buildSearchResults(SearchResult result) {
+  Widget _buildSongResults(SearchResult result) {
     // 如果没有搜索或搜索结果为空，显示搜索历史
     if (_searchService.currentKeyword.isEmpty) {
       return _buildSearchHistory();
@@ -239,6 +377,122 @@ class _SearchWidgetState extends State<SearchWidget> {
     );
   }
 
+  Widget _buildArtistResults() {
+    final keyword = _searchService.currentKeyword;
+    if (keyword.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.person_search,
+        title: '搜索歌手',
+        subtitle: '输入关键词后切换到“歌手”',
+      );
+    }
+
+    if (_artistLoading && _secondaryArtistId == null && _secondaryAlbumId == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_artistError != null && _secondaryArtistId == null && _secondaryAlbumId == null) {
+      return Center(child: Text('搜索失败: $_artistError'));
+    }
+    if (_artistResults.isEmpty && _secondaryArtistId == null && _secondaryAlbumId == null) {
+      return _buildEmptyState(
+        icon: Icons.person_off,
+        title: '没有找到相关歌手',
+        subtitle: '试试其他关键词吧',
+      );
+    }
+
+    // 二级（面包屑）区域
+    if (_secondaryArtistId != null || _secondaryAlbumId != null) {
+      return Column(
+        children: [
+          // 面包屑栏
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    setState(() {
+                      if (_secondaryAlbumId != null) {
+                        _secondaryAlbumId = null; // 返回到歌手详情
+                      } else {
+                        _secondaryArtistId = null; // 返回到歌手列表
+                        _secondaryArtistName = null;
+                      }
+                    });
+                  },
+                  tooltip: '返回',
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _secondaryAlbumId != null
+                      ? (_secondaryAlbumName ?? '专辑详情')
+                      : (_secondaryArtistName ?? '歌手详情'),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _secondaryAlbumId != null
+                ? AlbumDetailPage(albumId: _secondaryAlbumId!, embedded: true)
+                : ArtistDetailContent(
+                    artistId: _secondaryArtistId!,
+                    onOpenAlbum: (albumId) {
+                      setState(() {
+                        _secondaryAlbumId = albumId;
+                        _secondaryAlbumName = null; // 可在专辑页加载后更新
+                      });
+                    },
+                  ),
+          ),
+        ],
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _artistResults.length,
+      itemBuilder: (context, index) {
+        final artist = _artistResults[index];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: artist.picUrl.isEmpty
+                  ? CircleAvatar(radius: 24, child: Icon(Icons.person, color: Theme.of(context).colorScheme.onSurfaceVariant))
+                  : CachedNetworkImage(
+                      imageUrl: artist.picUrl,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                        width: 48,
+                        height: 48,
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        child: const Center(
+                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        ),
+                      ),
+                    ),
+            ),
+            title: Text(artist.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              setState(() {
+                _secondaryArtistId = artist.id;
+                _secondaryArtistName = artist.name;
+              });
+            },
+          ),
+        );
+      },
+    );
+  }
+
   /// 构建搜索头部（统计信息）
   Widget _buildSearchHeader(int totalCount, SearchResult result) {
     return Card(
@@ -254,34 +508,6 @@ class _SearchWidgetState extends State<SearchWidget> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const Spacer(),
-            // 平台统计
-            if (result.neteaseResults.isNotEmpty) ...[
-              const Text('🎵', style: TextStyle(fontSize: 14)),
-              const SizedBox(width: 2),
-              Text(
-                '${result.neteaseResults.length}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(width: 8),
-            ],
-            if (result.qqResults.isNotEmpty) ...[
-              const Text('🎶', style: TextStyle(fontSize: 14)),
-              const SizedBox(width: 2),
-              Text(
-                '${result.qqResults.length}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(width: 8),
-            ],
-            if (result.kugouResults.isNotEmpty) ...[
-              const Text('🎼', style: TextStyle(fontSize: 14)),
-              const SizedBox(width: 2),
-              Text(
-                '${result.kugouResults.length}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
           ],
         ),
       ),

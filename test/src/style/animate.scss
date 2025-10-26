@@ -1,0 +1,207 @@
+// 路由动画
+.router-slide-enter-active,
+.router-slide-leave-active {
+  transition: all 0.2s ease;
+}
+.router-slide-enter-from,
+.router-slide-leave-to {
+  opacity: 0;
+  transform: translateX(10px);
+}
+
+.router-fade-enter-active,
+.router-fade-leave-active {
+  transition: all 0.2s ease;
+}
+.router-fade-enter-from,
+.router-fade-leave-to {
+  opacity: 0;
+}
+
+.router-zoom-enter-active,
+.router-zoom-leave-active {
+  transition: all 0.2s ease;
+}
+.router-zoom-enter-from,
+.router-zoom-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+.router-up-enter-active,
+.router-up-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.router-up-enter-from {
+  opacity: 0;
+  transform: translateY(20px);
+}
+.router-up-enter-to {
+  opacity: 1;
+  transform: translateY(0);
+}
+.router-up-leave-active {
+  transform: translateY(0);
+}
+.router-up-leave-to {
+  opacity: 0;
+}
+
+// fade
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease-in-out;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+// fadeDown
+.fadeDown-enter-active,
+.fadeDown-leave-active {
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.fadeDown-enter-from,
+.fadeDown-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+// left-sm
+.left-sm-enter-active,
+.left-sm-leave-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    transform 0.3s,
+    opacity 0.3s;
+}
+.left-sm-enter-from,
+.left-sm-leave-to {
+  opacity: 0;
+  transform: translateX(-5px);
+}
+
+// shrink
+.shrink-enter-active,
+.shrink-leave-active {
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    transform 0.3s,
+    opacity 0.3s;
+}
+.shrink-enter-from,
+.shrink-leave-to {
+  opacity: 0;
+  transform: scale(0.4);
+}
+
+// up
+.up-enter-active,
+.up-leave-active {
+  transform: translateY(0);
+  transition: transform 0.5s cubic-bezier(0.65, 0.05, 0.36, 1);
+}
+.up-enter-from,
+.up-leave-to {
+  transform: translateY(100%);
+}
+
+// left
+.left-enter-active,
+.left-leave-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    transform 0.3s,
+    opacity 0.3s;
+}
+.left-enter-from,
+.left-leave-to {
+  transform: translateX(-100%);
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+@keyframes coverRotate {
+  0% {
+    transform: rotate(0deg) scale(1) translateX(0);
+  }
+  50% {
+    transform: rotate(180deg) scale(2) translateX(40%);
+  }
+  100% {
+    transform: rotate(360deg) scale(1) translateX(0);
+  }
+}
+
+@keyframes playerCoverRotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade-spacing {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+    letter-spacing: 12px;
+  }
+}
+
+@keyframes fade-down {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes breathe {
+  0% {
+    transform: scale(0.95);
+  }
+
+  50% {
+    transform: scale(1.1);
+  }
+
+  100% {
+    transform: scale(0.95);
+  }
+}

@@ -74,7 +74,7 @@ class LocationService extends ChangeNotifier {
   LocationService._internal();
 
   /// IP 归属地查询 API
-  static const String locationApiUrl = 'https://drive-backend.cialloo.site/api/userip';
+  static const String locationApiUrl = 'https://drive-backend.cyrene.ltd/api/userip';
 
   LocationInfo? _currentLocation;
   bool _isLoading = false;

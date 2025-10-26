@@ -14,7 +14,7 @@ class UrlService extends ChangeNotifier {
   UrlService._internal();
 
   /// 官方源地址
-  static const String officialBaseUrl = 'https://music.cialloo.site';
+  static const String officialBaseUrl = 'http://114.66.31.209:4055';
 
   /// 当前源类型
   BackendSourceType _sourceType = BackendSourceType.official;
@@ -137,6 +137,24 @@ class UrlService extends ChangeNotifier {
   String get searchUrl => '$baseUrl/search';
   String get songUrl => '$baseUrl/song';
   String get toplistsUrl => '$baseUrl/toplists';
+  // Netease Login (align with reference project)
+  String get neteaseQrKeyUrl => '$baseUrl/login/qr/key';
+  String get neteaseQrCreateUrl => '$baseUrl/login/qr/create';
+  String get neteaseQrCheckUrl => '$baseUrl/login/qr/check';
+
+  // Accounts API
+  String get accountsBindingsUrl => '$baseUrl/accounts/bindings';
+  String get accountsUnbindNeteaseUrl => '$baseUrl/accounts/netease';
+
+  // Netease Recommend API (require user-bound cookie)
+  String get neteaseRecommendSongsUrl => '$baseUrl/recommend/songs';
+  String get neteaseRecommendResourceUrl => '$baseUrl/recommend/resource';
+  String get neteasePersonalFmUrl => '$baseUrl/personal_fm';
+  String get neteaseFmTrashUrl => '$baseUrl/fm_trash';
+  String get neteasePersonalizedPlaylistsUrl => '$baseUrl/personalized';
+  String get neteasePersonalizedNewsongUrl => '$baseUrl/personalized/newsong';
+  // Netease playlist detail
+  String get neteasePlaylistDetailUrl => '$baseUrl/playlist';
 
   // QQ Music API
   String get qqSearchUrl => '$baseUrl/qq/search';

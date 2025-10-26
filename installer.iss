@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Cyrene Music"
-#define MyAppVersion "1.0.5"
+#define MyAppVersion "1.0.55"
 #define MyAppPublisher "morax"
 #define MyAppURL "https://music.cialloo.site"
 #define MyAppExeName "cyrene_music.exe"
@@ -16,7 +16,7 @@
 AppId={{F9A8E2A1-B3E0-4B1A-9F2D-3E2A5B6C8A1B}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-;AppVerName={#MyAppName} {#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
@@ -27,11 +27,20 @@ DisableProgramGroupPage=yes
 ; Remove the following line to run in administrative install mode (install for all users.)
 PrivilegesRequired=admin
 OutputDir=installer
-OutputBaseFilename=setup
+OutputBaseFilename=CyreneMusic_{#MyAppVersion}_setup
 SetupIconFile=windows\runner\resources\app_icon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+; 版本更新设置
+UninstallDisplayIcon={app}\{#MyAppExeName}
+VersionInfoVersion={#MyAppVersion}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} Installer
+; 支持静默安装
+AllowNoIcons=yes
+; 启用重新启动管理
+RestartIfNeededByRun=no
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
@@ -46,8 +55,89 @@ Source: "build\windows\x64\runner\Release\data\*"; DestDir: "{app}\data"; Flags:
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\{#MyAppExeName}"
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent 
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\data"
+Type: files; Name: "{autodesktop}\{#MyAppName}.lnk"
+
+[Code]
+function CompareVersion(V1, V2: string): Integer;
+var
+  P, N1, N2: Integer;
+begin
+  Result := 0;
+  while (Result = 0) and ((V1 <> '') or (V2 <> '')) do
+  begin
+    P := Pos('.', V1);
+    if P > 0 then
+    begin
+      N1 := StrToIntDef(Copy(V1, 1, P - 1), 0);
+      Delete(V1, 1, P);
+    end
+    else if V1 <> '' then
+    begin
+      N1 := StrToIntDef(V1, 0);
+      V1 := '';
+    end
+    else
+      N1 := 0;
+
+    P := Pos('.', V2);
+    if P > 0 then
+    begin
+      N2 := StrToIntDef(Copy(V2, 1, P - 1), 0);
+      Delete(V2, 1, P);
+    end
+    else if V2 <> '' then
+    begin
+      N2 := StrToIntDef(V2, 0);
+      V2 := '';
+    end
+    else
+      N2 := 0;
+
+    if N1 < N2 then
+      Result := -1
+    else if N1 > N2 then
+      Result := 1;
+  end;
+end;
+
+function InitializeSetup(): Boolean;
+var
+  OldVersion: String;
+  UninstallString: String;
+  ErrorCode: Integer;
+begin
+  Result := True;
+  
+  // 检查是否已安装旧版本
+  if RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{F9A8E2A1-B3E0-4B1A-9F2D-3E2A5B6C8A1B}_is1', 'DisplayVersion', OldVersion) then
+  begin
+    if CompareVersion(OldVersion, '{#MyAppVersion}') < 0 then
+    begin
+      if MsgBox('检测到已安装的旧版本 ' + OldVersion + '。' + #13#10 + '是否要先卸载旧版本再安装新版本？', mbConfirmation, MB_YESNO) = IDYES then
+      begin
+        if RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{F9A8E2A1-B3E0-4B1A-9F2D-3E2A5B6C8A1B}_is1', 'UninstallString', UninstallString) then
+        begin
+          UninstallString := RemoveQuotes(UninstallString);
+          Exec(UninstallString, '/SILENT', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
+        end;
+      end;
+    end;
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+  begin
+    // 清理可能存在的旧桌面快捷方式
+    DeleteFile(ExpandConstant('{autodesktop}\{#MyAppName}.lnk'));
+  end;
+end;

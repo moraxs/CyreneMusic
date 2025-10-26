@@ -3,6 +3,7 @@ enum MusicSource {
   netease,  // 网易云音乐
   qq,       // QQ音乐
   kugou,    // 酷狗音乐
+  local,    // 本地文件
 }
 
 /// 歌曲模型
@@ -56,6 +57,8 @@ class Track {
         return 'QQ音乐';
       case MusicSource.kugou:
         return '酷狗音乐';
+      case MusicSource.local:
+        return '本地';
     }
   }
 
@@ -68,6 +71,8 @@ class Track {
         return '🎶';
       case MusicSource.kugou:
         return '🎼';
+      case MusicSource.local:
+        return '📁';
     }
   }
 }

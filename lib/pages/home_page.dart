@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
 import '../services/music_service.dart';
 import '../services/player_service.dart';
 import '../services/version_service.dart';
@@ -16,6 +18,16 @@ import '../widgets/track_list_tile.dart';
 import '../widgets/search_widget.dart';
 import '../utils/page_visibility_notifier.dart';
 import '../pages/auth/auth_page.dart';
+import '../services/play_history_service.dart';
+import '../services/playlist_service.dart';
+import '../models/playlist.dart';
+import 'dart:math';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../services/url_service.dart';
+import '../services/netease_login_service.dart';
+import 'home_for_you_tab.dart';
+import 'discover_playlist_detail_page.dart';
 
 /// 首页 - 展示音乐和视频内容
 class HomePage extends StatefulWidget {
@@ -32,6 +44,11 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
   List<Track> _cachedRandomTracks = []; // 缓存随机歌曲列表
   bool _isPageVisible = true; // 页面是否可见
   bool _showSearch = false; // 是否显示搜索界面
+  Future<List<Track>>? _guessYouLikeFuture; // 缓存猜你喜欢的结果
+  bool _isNeteaseBound = false; // 是否已绑定网易云
+  int _homeTabIndex = 1; // 0: 为你推荐, 1: 推荐（默认显示推荐）
+  bool _showDiscoverDetail = false; // 是否显示歌单详情覆盖层
+  int? _discoverPlaylistId; // 当前展示的歌单ID
 
   @override
   bool get wantKeepAlive => true; // 保持页面状态
@@ -49,6 +66,12 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
     // 监听页面可见性变化
     PageVisibilityNotifier().addListener(_onPageVisibilityChanged);
     
+    // 监听播放历史变化
+    PlayHistoryService().addListener(_onHistoryChanged);
+
+    // 监听登录状态变化
+    AuthService().addListener(_onAuthChanged);
+    
     // 如果还没有数据，自动获取
     if (MusicService().toplists.isEmpty && !MusicService().isLoading) {
       print('🏠 [HomePage] 首次加载，获取榜单数据...');
@@ -58,8 +81,71 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
       _updateCachedTracksAndStartTimer();
     }
     
+    // 首次加载“猜你喜欢”
+    _prepareGuessYouLikeFuture();
+
+    // 首次加载第三方绑定状态
+    _loadBindings();
+
     // 🔍 首次进入时检查更新
     _checkForUpdateOnce();
+  }
+
+  void _onAuthChanged() {
+    if (mounted) {
+      setState(() {
+        // 登录状态变化时，重新加载“猜你喜欢”
+        _prepareGuessYouLikeFuture();
+      });
+      // 登录状态变化时，刷新绑定状态
+      _loadBindings();
+    }
+  }
+
+  void _onHistoryChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /// 加载第三方绑定状态（仅在登录后查询）
+  Future<void> _loadBindings() async {
+    try {
+      if (!AuthService().isLoggedIn) {
+        if (mounted) {
+          setState(() {
+            _isNeteaseBound = false;
+            _homeTabIndex = 1; // 回到“推荐”
+          });
+        }
+        return;
+      }
+      final resp = await NeteaseLoginService().fetchBindings();
+      final data = resp['data'] as Map<String, dynamic>?;
+      final netease = data != null ? data['netease'] as Map<String, dynamic>? : null;
+      final bound = (netease != null) && (netease['bound'] == true);
+      if (mounted) {
+        setState(() {
+          _isNeteaseBound = bound;
+          // 根据绑定状态设置默认首页 Tab：已绑定 -> 为你推荐，未绑定 -> 推荐
+          _homeTabIndex = bound ? 0 : 1;
+        });
+      }
+    } catch (e) {
+      // 失败时不影响首页显示
+      if (mounted) {
+        setState(() {
+          _isNeteaseBound = false;
+          _homeTabIndex = 1;
+        });
+      }
+    }
+  }
+
+  void _onPlaylistChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _onPageVisibilityChanged() {
@@ -98,6 +184,8 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
     WidgetsBinding.instance.removeObserver(this);
     MusicService().removeListener(_onMusicServiceChanged);
     PageVisibilityNotifier().removeListener(_onPageVisibilityChanged);
+    PlayHistoryService().removeListener(_onHistoryChanged);
+    AuthService().removeListener(_onAuthChanged);
     _bannerController.dispose();
     super.dispose();
   }
@@ -423,19 +511,24 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
   Widget build(BuildContext context) {
     super.build(context); // 必须调用以支持 AutomaticKeepAliveClientMixin
     final colorScheme = Theme.of(context).colorScheme;
+    final bool showTabs = _isNeteaseBound; // 绑定网易云后显示 Tabs
     
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      body: _showSearch 
-          ? SearchWidget(
-              onClose: () {
-                setState(() {
-                  _showSearch = false;
-                });
-              },
-            )
-          : CustomScrollView(
-              slivers: [
+      body: Stack(
+        children: [
+          // 主体内容或搜索
+          Positioned.fill(
+            child: _showSearch 
+                ? SearchWidget(
+                    onClose: () {
+                      setState(() {
+                        _showSearch = false;
+                      });
+                    },
+                  )
+                : CustomScrollView(
+                    slivers: [
                 // 顶部标题
                 SliverAppBar(
                   floating: true,
@@ -481,26 +574,375 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                   padding: const EdgeInsets.all(24.0),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
+                      // 顶部 Tabs（仅绑定网易云后显示）
+                      if (showTabs) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12.0),
+                          child: _HomeCapsuleTabs(
+                            tabs: const ['为你推荐', '榜单'],
+                            currentIndex: _homeTabIndex,
+                            onChanged: (i) => setState(() => _homeTabIndex = i),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
                       // 加载状态或错误提示
-                      if (MusicService().isLoading)
-                        _buildLoadingSection()
-                      else if (MusicService().errorMessage != null)
-                        _buildErrorSection()
-                      else if (MusicService().toplists.isEmpty)
-                        _buildEmptySection()
-                      else ...[
-                        // 轮播图
-                        _buildBannerSection(),
-                        const SizedBox(height: 32),
-                        
-                        // 热门榜单
-                        _buildToplistsGrid(),
+                      if (showTabs && _homeTabIndex == 0) ...[
+                        HomeForYouTab(
+                          onOpenPlaylistDetail: (id) {
+                            setState(() {
+                              _discoverPlaylistId = id;
+                              _showDiscoverDetail = true;
+                            });
+                          },
+                        ),
+                      ] else ...[
+                        if (MusicService().isLoading)
+                          _buildLoadingSection()
+                        else if (MusicService().errorMessage != null)
+                          _buildErrorSection()
+                        else if (MusicService().toplists.isEmpty)
+                          _buildEmptySection()
+                        else ...[
+                          // 轮播图
+                          _buildBannerSection(),
+                          const SizedBox(height: 32),
+
+                          // 最近播放 和 猜你喜欢（响应式布局）
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              // 宽度小于 600px 或 Android 平台时使用纵向布局
+                              final useVerticalLayout = constraints.maxWidth < 600 || Platform.isAndroid;
+                              
+                              if (useVerticalLayout) {
+                                // 移动端竖屏：纵向排列
+                                return Column(
+                                  children: [
+                                    _buildHistorySection(),
+                                    const SizedBox(height: 16),
+                                    _buildGuessYouLikeSection(),
+                                  ],
+                                );
+                              } else {
+                                // 桌面端或横屏：横向排列
+                                return Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(child: _buildHistorySection()),
+                                    const SizedBox(width: 24),
+                                    Expanded(child: _buildGuessYouLikeSection()),
+                                  ],
+                                );
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 32),
+                          
+                          // 热门榜单
+                          _buildToplistsGrid(),
+                        ],
                       ],
                     ]),
                   ),
                 ),
               ],
             ),
+          ),
+          // 歌单详情覆盖层（覆盖标题与 Tabs，但不覆盖左侧菜单栏）
+          if (_showDiscoverDetail && _discoverPlaylistId != null)
+            Positioned.fill(
+              child: Material(
+                color: Theme.of(context).colorScheme.surface,
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back_rounded),
+                          onPressed: () => setState(() {
+                            _showDiscoverDetail = false;
+                            _discoverPlaylistId = null;
+                          }),
+                          tooltip: '返回',
+                        ),
+                      ),
+                      Expanded(
+                        child: PrimaryScrollController.none(
+                          child: DiscoverPlaylistDetailContent(playlistId: _discoverPlaylistId!),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建最近播放区域
+  Widget _buildHistorySection() {
+    final history = PlayHistoryService().history.take(3).toList(); // 只取最近3条
+
+    if (history.isEmpty) {
+      return const SizedBox.shrink(); // 如果没有历史，不显示任何东西
+    }
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          // TODO: 跳转到完整的历史记录页面
+          print('跳转到历史记录页面');
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '最近播放',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  // 封面
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: CachedNetworkImage(
+                      imageUrl: history.first.picUrl,
+                      width: 64,
+                      height: 64,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // 歌曲列表
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: List.generate(history.length, (index) {
+                        final item = history[index];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2.0),
+                          child: Text.rich(
+                            TextSpan(
+                              style: Theme.of(context).textTheme.bodySmall,
+                              children: [
+                                TextSpan(
+                                  text: '${index + 1}  ',
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                TextSpan(text: '${item.name} - ${item.artists}'),
+                              ],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 构建猜你喜欢区域
+  Widget _buildGuessYouLikeSection() {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          // TODO: 跳转到推荐页面或歌单
+          print('跳转到推荐页面');
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '猜你喜欢',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 64, // 固定高度防止布局跳动
+                child: _guessYouLikeFuture != null
+                    ? _buildGuessYouLikeContent()
+                    : _buildGuessYouLikePlaceholder(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 构建猜你喜欢内容
+  Widget _buildGuessYouLikeContent() {
+    return FutureBuilder<List<Track>>(
+      future: _guessYouLikeFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+          return _buildGuessYouLikePlaceholder(isError: true);
+        }
+
+        final sampleTracks = snapshot.data!;
+
+        return Row(
+          children: [
+            // 封面
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CachedNetworkImage(
+                imageUrl: sampleTracks.first.picUrl,
+                width: 64,
+                height: 64,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // 歌曲列表
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: List.generate(sampleTracks.length, (index) {
+                  final track = sampleTracks[index];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2.0),
+                    child: Text.rich(
+                      TextSpan(
+                        style: Theme.of(context).textTheme.bodySmall,
+                        children: [
+                          TextSpan(
+                            text: '${index + 1}  ',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          TextSpan(text: '${track.name} - ${track.artists}'),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 准备“猜你喜欢”的 Future
+  void _prepareGuessYouLikeFuture() {
+    if (AuthService().isLoggedIn) {
+      _guessYouLikeFuture = _fetchRandomTracksFromPlaylists();
+    } else {
+      _guessYouLikeFuture = null;
+    }
+  }
+
+  /// 从多个歌单中获取随机歌曲
+  Future<List<Track>> _fetchRandomTracksFromPlaylists() async {
+    final String baseUrl = UrlService().baseUrl;
+    final String? token = AuthService().token;
+    if (token == null) throw Exception('未登录');
+
+    // 1. 获取所有歌单
+    final playlistsResponse = await http.get(
+      Uri.parse('$baseUrl/playlists'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (playlistsResponse.statusCode != 200) {
+      throw Exception('获取歌单列表失败');
+    }
+
+    final playlistsBody = json.decode(utf8.decode(playlistsResponse.bodyBytes));
+    if (playlistsBody['status'] != 200) {
+      throw Exception(playlistsBody['message'] ?? '获取歌单列表失败');
+    }
+    
+    final List<dynamic> playlistsJson = playlistsBody['playlists'] ?? [];
+    final List<Playlist> allPlaylists = playlistsJson.map((p) => Playlist.fromJson(p)).toList();
+
+    // 2. 筛选非空歌单
+    final nonEmptyPlaylists = allPlaylists.where((p) => p.trackCount > 0).toList();
+    if (nonEmptyPlaylists.isEmpty) {
+      throw Exception('没有包含歌曲的歌单');
+    }
+
+    // 3. 随机选择一个歌单并获取其歌曲
+    final randomPlaylist = nonEmptyPlaylists[Random().nextInt(nonEmptyPlaylists.length)];
+    final tracksResponse = await http.get(
+      Uri.parse('$baseUrl/playlists/${randomPlaylist.id}/tracks'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (tracksResponse.statusCode != 200) {
+      throw Exception('获取歌曲失败');
+    }
+    
+    final tracksBody = json.decode(utf8.decode(tracksResponse.bodyBytes));
+    if (tracksBody['status'] != 200) {
+      throw Exception(tracksBody['message'] ?? '获取歌曲失败');
+    }
+    
+    final List<dynamic> tracksJson = tracksBody['tracks'] ?? [];
+    final List<PlaylistTrack> tracks = tracksJson.map((t) => PlaylistTrack.fromJson(t)).toList();
+
+    // 4. 随机挑选3首
+    tracks.shuffle();
+    return tracks.take(3).map((t) => t.toTrack()).toList();
+  }
+
+  /// 加载歌单中的一小部分歌曲用于展示
+  Future<List<PlaylistTrack>> _loadPlaylistTracksSample(int playlistId) async {
+    // 这里我们直接调用 PlaylistService 的方法，但理想情况下可以做一个缓存或优化
+    // 为了简单起见，我们直接加载
+    await PlaylistService().loadPlaylistTracks(playlistId);
+    return PlaylistService().currentTracks;
+  }
+
+  /// 构建猜你喜欢占位符
+  Widget _buildGuessYouLikePlaceholder({bool isError = false}) {
+    final message = isError ? '加载推荐失败' : '导入歌单查看更多';
+    return InkWell(
+      onTap: () {
+        // TODO: 跳转到我的页面，引导用户导入歌单
+        print('引导用户导入歌单');
+      },
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
+        ),
+      ),
     );
   }
 
@@ -765,6 +1207,7 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
         final cardHeight = constraints.maxHeight;
         final coverSize = (cardHeight * 0.65).clamp(120.0, 160.0);
         final cardWidth = coverSize;
+        var isHovering = false;
         
         return Container(
           width: cardWidth,
@@ -789,74 +1232,94 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // 专辑封面
-                  Stack(
-                    children: [
-                      CachedNetworkImage(
-                        imageUrl: track.picUrl,
-                        width: coverSize,
-                        height: coverSize,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          width: coverSize,
-                          height: coverSize,
-                          color: colorScheme.surfaceContainerHighest,
-                          child: const Center(
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                  StatefulBuilder(
+                    builder: (context, setHoverState) {
+                      return MouseRegion(
+                        onEnter: (_) => setHoverState(() => isHovering = true),
+                        onExit: (_) => setHoverState(() => isHovering = false),
+                        child: Stack(
+                          children: [
+                            AnimatedScale(
+                              scale: isHovering ? 1.1 : 1.0,
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOut,
+                              child: CachedNetworkImage(
+                                imageUrl: track.picUrl,
+                                width: coverSize,
+                                height: coverSize,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Container(
+                                  width: coverSize,
+                                  height: coverSize,
+                                  color: colorScheme.surfaceContainerHighest,
+                                  child: const Center(
+                                    child: SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    ),
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) => Container(
+                                  width: coverSize,
+                                  height: coverSize,
+                                  color: colorScheme.surfaceContainerHighest,
+                                  child: Icon(
+                                    Icons.music_note,
+                                    size: coverSize * 0.3,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        errorWidget: (context, url, error) => Container(
-                          width: coverSize,
-                          height: coverSize,
-                          color: colorScheme.surfaceContainerHighest,
-                          child: Icon(
-                            Icons.music_note,
-                            size: coverSize * 0.3,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                      // 排名标签
-                      Positioned(
-                        top: 4,
-                        left: 4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: rank < 3 
-                                ? colorScheme.primary 
-                                : colorScheme.secondaryContainer,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '${rank + 1}',
-                            style: TextStyle(
-                              color: rank < 3 
-                                  ? colorScheme.onPrimary 
-                                  : colorScheme.onSecondaryContainer,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                            // 排名标签
+                            Positioned(
+                              top: 4,
+                              left: 4,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: rank < 3 
+                                      ? colorScheme.primary 
+                                      : colorScheme.secondaryContainer,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '${rank + 1}',
+                                  style: TextStyle(
+                                    color: rank < 3 
+                                        ? colorScheme.onPrimary 
+                                        : colorScheme.onSecondaryContainer,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ),
-                      // 播放按钮覆盖层
-                      Positioned.fill(
-                        child: Container(
-                          color: Colors.black.withOpacity(0),
-                          child: Center(
-                            child: Icon(
-                              Icons.play_circle_outline,
-                              size: coverSize * 0.3,
-                              color: Colors.white.withOpacity(0.9),
+                            // 播放按钮覆盖层（悬停时显示）
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                ignoring: true,
+                                child: AnimatedOpacity(
+                                  opacity: isHovering ? 1.0 : 0.0,
+                                  duration: const Duration(milliseconds: 150),
+                                  child: Container(
+                                    color: Colors.black.withOpacity(0),
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.play_arrow,
+                                        size: coverSize * 0.28,
+                                        color: Colors.white.withOpacity(0.95),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                   // 歌曲信息 - 使用 Expanded 而不是固定高度，避免溢出
                   Expanded(
@@ -898,6 +1361,128 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
 
   /// 显示榜单详情
   void _showToplistDetail(Toplist toplist) {
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      // 桌面端：从左侧弹出侧边栏
+      _showToplistDetailSidebar(toplist);
+    } else {
+      // 移动端：从底部弹出抽屉
+      _showToplistDetailBottomSheet(toplist);
+    }
+  }
+
+  /// 桌面端：从左侧弹出侧边栏（Material Design 3 样式 + 高斯模糊背景）
+  void _showToplistDetailSidebar(Toplist toplist) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.transparent, // 使用透明色，自定义背景
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        // M3 标准动画曲线
+        final curvedAnimation = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        
+        return Stack(
+          children: [
+            // 高斯模糊背景层（淡入效果 + 圆角裁剪）
+            Padding(
+              padding: const EdgeInsets.all(8.0), // 与主窗口外边距一致
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12), // 与主窗口圆角一致
+                child: FadeTransition(
+                  opacity: curvedAnimation,
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).pop(), // 点击背景关闭
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(
+                        sigmaX: 10.0, // 水平模糊强度
+                        sigmaY: 10.0, // 垂直模糊强度
+                      ),
+                      child: Container(
+                        color: colorScheme.scrim.withOpacity(0.25), // 半透明遮罩
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Windows 标题栏可拖动区域（覆盖在模糊层上方）
+            if (Platform.isWindows)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 48, // 标题栏高度
+                child: MoveWindow(
+                  child: Container(
+                    color: Colors.transparent,
+                  ),
+                ),
+              ),
+            // 侧边栏内容（滑入 + 淡入效果）
+            SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(-1.0, 0.0),
+                end: Offset.zero,
+              ).animate(curvedAnimation),
+              child: FadeTransition(
+                opacity: curvedAnimation,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0), // 与主窗口保持一致的外边距
+                    child: Material(
+                      elevation: 0,
+                      type: MaterialType.card,
+                      color: Colors.transparent,
+                      child: Container(
+                        width: 400,
+                        // 减去上下的 padding，避免超出主窗口
+                        height: MediaQuery.of(context).size.height - 16,
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHigh, // M3 标准侧板背景色
+                          borderRadius: BorderRadius.circular(12), // 与主窗口圆角保持一致
+                          // M3 标准阴影
+                          boxShadow: [
+                            BoxShadow(
+                              color: colorScheme.shadow.withOpacity(0.08),
+                              blurRadius: 4,
+                              offset: const Offset(2, 0),
+                            ),
+                            BoxShadow(
+                              color: colorScheme.shadow.withOpacity(0.16),
+                              blurRadius: 12,
+                              offset: const Offset(4, 0),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12), // 裁剪内容，与主窗口一致
+                          child: _buildToplistDetailContent(toplist),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return child!;
+      },
+    );
+  }
+
+  /// 移动端：从底部弹出抽屉
+  void _showToplistDetailBottomSheet(Toplist toplist) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -924,88 +1509,177 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                // 榜单头部
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(
-                          imageUrl: toplist.coverImgUrl,
-                          width: 80,
-                          height: 80,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            width: 80,
-                            height: 80,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            child: const Center(
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                            ),
-                          ),
-                          errorWidget: (context, url, error) => Container(
-                            width: 80,
-                            height: 80,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            child: const Icon(Icons.music_note, size: 32),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              toplist.name,
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              toplist.creator,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '共 ${toplist.trackCount} 首',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                // 歌曲列表
+                // 榜单内容
                 Expanded(
-                  child: ListView.builder(
-                    controller: scrollController,
-                    itemCount: toplist.tracks.length,
-                    itemBuilder: (context, index) {
-                      return TrackListTile(
-                        track: toplist.tracks[index],
-                        index: index,
-                      );
-                    },
-                  ),
+                  child: _buildToplistDetailContent(toplist, scrollController: scrollController),
                 ),
               ],
             ),
           );
         },
       ),
+    );
+  }
+
+  /// 构建榜单详情内容（桌面端和移动端共用 - Material Design 3 样式）
+  Widget _buildToplistDetailContent(Toplist toplist, {ScrollController? scrollController}) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final isDesktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    
+    return Column(
+      children: [
+        // M3 标准头部区域
+        Container(
+          padding: EdgeInsets.fromLTRB(
+            isDesktop ? 24.0 : 16.0, // 桌面端使用更大的左右边距
+            isDesktop ? 20.0 : 16.0,
+            isDesktop ? 16.0 : 16.0,
+            16.0,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 封面 - M3 标准圆角
+              Card(
+                elevation: 0,
+                color: colorScheme.surfaceContainerHighest,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12), // M3 标准圆角
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: CachedNetworkImage(
+                  imageUrl: toplist.coverImgUrl,
+                  width: isDesktop ? 96 : 80, // 桌面端稍大
+                  height: isDesktop ? 96 : 80,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    width: isDesktop ? 96 : 80,
+                    height: isDesktop ? 96 : 80,
+                    color: colorScheme.surfaceContainerHighest,
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    width: isDesktop ? 96 : 80,
+                    height: isDesktop ? 96 : 80,
+                    color: colorScheme.surfaceContainerHighest,
+                    child: Icon(
+                      Icons.music_note_rounded, // M3 圆角图标
+                      size: 40,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              // 信息区域
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 榜单名称 - M3 headline 样式
+                    Text(
+                      toplist.name,
+                      style: textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w600, // M3 标准字重
+                        color: colorScheme.onSurface,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    // 创建者 - M3 body 样式
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.person_rounded,
+                          size: 16,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            toplist.creator,
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    // 歌曲数量 - M3 label 样式
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.queue_music_rounded,
+                          size: 16,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '共 ${toplist.trackCount} 首歌曲',
+                          style: textTheme.labelLarge?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // 关闭按钮（桌面端显示）- M3 标准图标按钮
+              if (isDesktop)
+                IconButton(
+                  icon: Icon(
+                    Icons.close_rounded, // M3 圆角图标
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                  tooltip: '关闭',
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    hoverColor: colorScheme.onSurface.withOpacity(0.08), // M3 标准悬停效果
+                  ),
+                ),
+            ],
+          ),
+        ),
+        // M3 标准分隔线
+        Divider(
+          height: 1,
+          thickness: 1,
+          color: colorScheme.outlineVariant,
+        ),
+        // 歌曲列表
+        Expanded(
+          child: ListView.builder(
+            controller: scrollController,
+            padding: EdgeInsets.only(
+              top: 8,
+              bottom: MediaQuery.of(context).padding.bottom + 8, // 考虑底部安全区域
+            ),
+            itemCount: toplist.tracks.length,
+            itemBuilder: (context, index) {
+              return TrackListTile(
+                track: toplist.tracks[index],
+                index: index,
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1177,6 +1851,100 @@ class _TrackBannerCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 首页顶部胶囊 Tabs（参考歌手详情页样式）
+class _HomeCapsuleTabs extends StatelessWidget {
+  final List<String> tabs;
+  final int currentIndex;
+  final ValueChanged<int> onChanged;
+  const _HomeCapsuleTabs({required this.tabs, required this.currentIndex, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final bg = cs.surfaceContainerHighest;
+    final pillColor = cs.primary;
+    final selFg = cs.onPrimary;
+    final unSelFg = cs.onSurfaceVariant;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = 48.0;
+        final padding = 5.0;
+        final radius = height / 2;
+        final totalWidth = constraints.maxWidth;
+        final count = tabs.length;
+        final tabWidth = totalWidth / count;
+
+        return SizedBox(
+          height: height,
+          child: Stack(
+            children: [
+              // 背景容器
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(radius),
+                  ),
+                ),
+              ),
+              // 滑动胶囊指示器
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeInOutCubic,
+                top: padding,
+                bottom: padding,
+                left: padding + currentIndex * (tabWidth - padding * 2),
+                width: tabWidth - padding * 2,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeInOutCubic,
+                  decoration: BoxDecoration(
+                    color: pillColor,
+                    borderRadius: BorderRadius.circular(radius - padding),
+                    boxShadow: [
+                      BoxShadow(
+                        color: pillColor.withOpacity(0.25),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // 标签点击与文字
+              Row(
+                children: List.generate(count, (i) {
+                  final selected = i == currentIndex;
+                  return SizedBox(
+                    width: tabWidth,
+                    height: height,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(radius),
+                      onTap: () => onChanged(i),
+                      child: Center(
+                        child: AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeInOut,
+                          style: TextStyle(
+                            color: selected ? selFg : unSelFg,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          child: Text(tabs[i]),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
