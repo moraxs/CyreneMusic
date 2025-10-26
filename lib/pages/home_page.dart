@@ -579,7 +579,7 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12.0),
                           child: _HomeCapsuleTabs(
-                            tabs: const ['为你推荐', '推荐'],
+                            tabs: const ['为你推荐', '榜单'],
                             currentIndex: _homeTabIndex,
                             onChanged: (i) => setState(() => _homeTabIndex = i),
                           ),

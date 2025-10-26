@@ -72,7 +72,7 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _SectionTitle(title: '每日推荐'),
+                  const _GreetingHeader(),
                   _DailyRecommendCard(
                     tracks: data.dailySongs,
                     onOpenDetail: () => setState(() => _showDailyDetail = true),
@@ -150,6 +150,69 @@ class _SectionTitle extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+    );
+  }
+}
+
+/// 顶部问候语（根据时间段变化）
+class _GreetingHeader extends StatelessWidget {
+  const _GreetingHeader();
+
+  String _greetText(TimeOfDay now) {
+    final minutes = now.hour * 60 + now.minute;
+    if (minutes < 6 * 60) return '夜深了';            // 00:00 - 05:59
+    if (minutes < 9 * 60) return '早上好';            // 06:00 - 08:59
+    if (minutes < 12 * 60) return '上午好';           // 09:00 - 11:59
+    if (minutes < 14 * 60) return '中午好';           // 12:00 - 13:59
+    if (minutes < 18 * 60) return '下午好';           // 14:00 - 17:59
+    return '晚上好';                                  // 18:00 - 23:59
+  }
+
+  String _subGreeting(TimeOfDay now) {
+    final h = now.hour;
+    if (h < 6) return '注意休息，音乐轻声一点';
+    if (h < 9) return '新的一天，从此开始好心情';
+    if (h < 12) return '愿音乐伴你高效工作';
+    if (h < 14) return '午后小憩，来点轻松的旋律';
+    if (h < 18) return '忙碌之余，听听喜欢的歌';
+    return '夜色温柔，音乐更动听';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final now = TimeOfDay.now();
+    final greet = _greetText(now);
+    final sub = _subGreeting(now);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+      child: Row(
+        children: [
+          Icon(Icons.wb_twilight_rounded, color: cs.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  greet,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  sub,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

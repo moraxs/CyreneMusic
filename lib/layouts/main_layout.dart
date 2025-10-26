@@ -6,6 +6,7 @@ import '../pages/home_page.dart';
 import '../pages/discover_page.dart';
 import '../pages/history_page.dart';
 import '../pages/my_page.dart';
+import '../pages/local_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/developer_page.dart';
 import '../services/auth_service.dart';
@@ -14,6 +15,7 @@ import '../services/developer_mode_service.dart';
 import '../utils/page_visibility_notifier.dart';
 import '../utils/theme_manager.dart';
 import '../pages/auth/auth_page.dart';
+import '../services/player_service.dart';
 
 /// 主布局 - 包含侧边导航栏和内容区域
 class MainLayout extends StatefulWidget {
@@ -36,6 +38,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
       const HomePage(),
       const DiscoverPage(),
       const HistoryPage(),
+      const LocalPage(), // 本地
       const MyPage(), // 我的（歌单+听歌统计）
       const SettingsPage(),
     ];
@@ -46,6 +49,62 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     }
     
     return pages;
+  }
+
+  Future<void> _openMoreBottomSheet(BuildContext context) async {
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.history_outlined),
+                title: const Text('历史'),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _selectedIndex = 2); // 历史
+                  PageVisibilityNotifier().setCurrentPage(2);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder_open),
+                title: const Text('本地'),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _selectedIndex = 3); // 本地
+                  PageVisibilityNotifier().setCurrentPage(3);
+                },
+              ),
+              const Divider(height: 8),
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: const Text('设置'),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _selectedIndex = 5); // 设置
+                  PageVisibilityNotifier().setCurrentPage(5);
+                  // 触发开发者模式（与设置点击一致）
+                  DeveloperModeService().onSettingsClicked();
+                },
+              ),
+              if (DeveloperModeService().isDeveloperMode)
+                ListTile(
+                  leading: const Icon(Icons.code),
+                  title: const Text('Dev'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    setState(() => _selectedIndex = 6);
+                    PageVisibilityNotifier().setCurrentPage(6);
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -103,7 +162,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         if (mounted) {
           setState(() {
             // 如果当前选中的是开发者页面但模式被关闭，切换到首页
-            if (_selectedIndex >= 4 && !DeveloperModeService().isDeveloperMode) {
+            if (_selectedIndex >= 6 && !DeveloperModeService().isDeveloperMode) {
               _selectedIndex = 0;
             }
           });
@@ -153,7 +212,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
               onTap: () {
                 Navigator.pop(context);
                 setState(() {
-                  _selectedIndex = 2; // 切换到我的页面
+                  _selectedIndex = 4; // 切换到我的页面
                 });
               },
             ),
@@ -258,73 +317,91 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   /// 构建移动端布局（Android/iOS）
   Widget _buildMobileLayout(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          // Windows 平台且使用移动布局时也显示自定义标题栏
-          if (Platform.isWindows)
-            const CustomTitleBar(),
-          
-          // 主要内容区域
-          Expanded(
-            child: _pages[_selectedIndex],
+          // 主内容层
+          Column(
+            children: [
+              if (Platform.isWindows)
+                const CustomTitleBar(),
+              Expanded(child: _pages[_selectedIndex]),
+            ],
           ),
-          
-          // 迷你播放器
-          const MiniPlayer(),
+          // 悬浮迷你播放器（不占用布局空间）
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: AnimatedBuilder(
+              animation: PlayerService(),
+              builder: (context, child) {
+                final hasMiniPlayer = PlayerService().currentTrack != null || PlayerService().currentSong != null;
+                if (!hasMiniPlayer) return const SizedBox.shrink();
+                return const MiniPlayer();
+              },
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (int index) {
-          // 如果点击的是设置按钮，触发开发者模式检测
-          if (index == 3) {
-            DeveloperModeService().onSettingsClicked();
+        selectedIndex: () {
+          if (_selectedIndex == 0) return 0; // 首页
+          if (_selectedIndex == 1) return 1; // 发现
+          if (_selectedIndex == 4) return 2; // 我的
+          return 3; // 其他 -> 更多
+        }(),
+        onDestinationSelected: (int tabIndex) async {
+          if (tabIndex == 3) {
+            await _openMoreBottomSheet(context);
+            return;
           }
-          
+
+          int targetPageIndex = _selectedIndex;
+          if (tabIndex == 0) targetPageIndex = 0; // 首页
+          if (tabIndex == 1) targetPageIndex = 1; // 发现
+          if (tabIndex == 2) targetPageIndex = 4; // 我的
+
           setState(() {
-            _selectedIndex = index;
+            _selectedIndex = targetPageIndex;
           });
-          // 通知页面切换
-          PageVisibilityNotifier().setCurrentPage(index);
+          PageVisibilityNotifier().setCurrentPage(targetPageIndex);
         },
-        destinations: [
-          const NavigationDestination(
+        destinations: const [
+          NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: '首页',
           ),
-          const NavigationDestination(
+          NavigationDestination(
             icon: Icon(Icons.explore_outlined),
             selectedIcon: Icon(Icons.explore),
             label: '发现',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.history_outlined),
-            selectedIcon: Icon(Icons.history),
-            label: '历史',
-          ),
-          const NavigationDestination(
+          NavigationDestination(
             icon: Icon(Icons.person_outlined),
             selectedIcon: Icon(Icons.person),
             label: '我的',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: '设置',
+          NavigationDestination(
+            icon: Icon(Icons.more_horiz),
+            selectedIcon: Icon(Icons.more_horiz),
+            label: '更多',
           ),
-          // 开发者模式导航项（动态显示）
-          if (DeveloperModeService().isDeveloperMode)
-            const NavigationDestination(
-              icon: Icon(Icons.code),
-              selectedIcon: Icon(Icons.code),
-              label: 'Dev',
-            ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _handleUserButtonTap,
-        child: _buildUserAvatar(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: AnimatedBuilder(
+        animation: PlayerService(),
+        builder: (context, child) {
+          final hasMiniPlayer = PlayerService().currentTrack != null || PlayerService().currentSong != null;
+          return Padding(
+            padding: EdgeInsets.only(bottom: hasMiniPlayer ? 120.0 : 0.0),
+            child: FloatingActionButton(
+              onPressed: _handleUserButtonTap,
+              child: _buildUserAvatar(),
+            ),
+          );
+        },
       ),
     );
   }
@@ -383,7 +460,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                           selectedIndex: _selectedIndex,
                           onDestinationSelected: (int index) {
                             // 如果点击的是设置按钮，触发开发者模式检测
-                            if (index == 3) {
+                            if (index == 5) {
                               DeveloperModeService().onSettingsClicked();
                             }
 
@@ -409,6 +486,11 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                               icon: Icon(Icons.history_outlined),
                               selectedIcon: Icon(Icons.history),
                               label: Text('历史'),
+                            ),
+                            const NavigationDrawerDestination(
+                              icon: Icon(Icons.folder_open),
+                              selectedIcon: Icon(Icons.folder),
+                              label: Text('本地'),
                             ),
                             const NavigationDrawerDestination(
                               icon: Icon(Icons.person_outlined),
@@ -462,6 +544,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
       _CollapsedItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: '首页'),
       _CollapsedItem(icon: Icons.explore_outlined, selectedIcon: Icons.explore, label: '发现'),
       _CollapsedItem(icon: Icons.history_outlined, selectedIcon: Icons.history, label: '历史'),
+      _CollapsedItem(icon: Icons.folder_open, selectedIcon: Icons.folder, label: '本地'),
       _CollapsedItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: '我的'),
       _CollapsedItem(icon: Icons.settings_outlined, selectedIcon: Icons.settings, label: '设置'),
     ];
@@ -485,7 +568,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
                 onTap: () {
-                  if (index == 3) {
+                  if (index == 5) {
                     DeveloperModeService().onSettingsClicked();
                   }
                   setState(() {

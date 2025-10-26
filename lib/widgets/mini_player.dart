@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/player_service.dart';
 import '../pages/player_page.dart';
@@ -25,6 +26,9 @@ class MiniPlayer extends StatelessWidget {
         }
 
         final colorScheme = Theme.of(context).colorScheme;
+        // 用播放器主题色作为液体玻璃的轻微色彩倾向
+        final Color? themeTint = PlayerService().themeColorNotifier.value;
+        final isCompactWidth = MediaQuery.of(context).size.width < 600;
 
         return GestureDetector(
           excludeFromSemantics: true,
@@ -53,18 +57,199 @@ class MiniPlayer extends StatelessWidget {
             );
           },
           child: Container(
-            height: 72,
+            height: 90,
+            margin: isCompactWidth ? const EdgeInsets.fromLTRB(12, 8, 12, 8) : EdgeInsets.zero,
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
+              color: isCompactWidth ? Colors.transparent : colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(isCompactWidth ? 28 : 0),
+              border: isCompactWidth ? Border.all(color: Colors.white.withOpacity(0.18), width: 1) : null,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, -2),
+                  color: Colors.black.withOpacity(0.10),
+                  blurRadius: 12,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
-            child: Column(
+            child: isCompactWidth
+                ? Stack(
+                    children: [
+                      // 毛玻璃模糊层（使用 ClipRect 包裹 BackdropFilter 更稳健）
+                      Positioned.fill(
+                        child: ClipRect(
+                          child: BackdropFilter(
+                            filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            child: const SizedBox.shrink(),
+                          ),
+                        ),
+                      ),
+                      // 半透明渐变叠加，营造液体玻璃质感
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(28),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.white.withOpacity(0.16),
+                                (themeTint ?? colorScheme.primary).withOpacity(0.10),
+                                Colors.white.withOpacity(0.05),
+                              ],
+                              stops: const [0.0, 0.45, 1.0],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // 高光（径向）
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          ignoring: true,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(28),
+                              gradient: RadialGradient(
+                                center: const Alignment(-0.9, -0.9),
+                                radius: 1.2,
+                                colors: [
+                                  Colors.white.withOpacity(0.20),
+                                  Colors.white.withOpacity(0.04),
+                                  Colors.transparent,
+                                ],
+                                stops: const [0.0, 0.45, 1.0],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // 内容
+                      Column(
+                        children: [
+                          _buildProgressBar(player, colorScheme),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final isCompact = constraints.maxWidth < 600;
+                                  final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
+                                  if (isCompact) {
+                                    if (isPortrait) {
+                                      return Row(
+                                        children: [
+                                          Expanded(
+                                            flex: 8,
+                                            child: Row(
+                                              children: [
+                                                _buildCover(song, track, colorScheme, size: 56),
+                                                const SizedBox(width: 10),
+                                                Expanded(child: _buildSongInfo(song, track, context)),
+                                              ],
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 6,
+                                            child: Align(
+                                              alignment: Alignment.centerRight,
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  _buildCenterControls(player, colorScheme, hideSkip: true),
+                                                  IconButton(
+                                                    icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
+                                                    tooltip: '播放列表',
+                                                    onPressed: () => _showQueueSheet(context),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    } else {
+                                      return Row(
+                                        children: [
+                                          Expanded(
+                                            flex: 6,
+                                            child: Row(
+                                              children: [
+                                                _buildCover(song, track, colorScheme, size: 56),
+                                                const SizedBox(width: 10),
+                                                Expanded(child: _buildSongInfo(song, track, context)),
+                                              ],
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 4,
+                                            child: Center(child: _buildCenterControls(player, colorScheme, hideSkip: true)),
+                                          ),
+                                          Expanded(
+                                            flex: 5,
+                                            child: Align(
+                                              alignment: Alignment.centerRight,
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    _formatDuration(player.position),
+                                                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                                  ),
+                                                  const Text(' / '),
+                                                  Text(
+                                                    _formatDuration(player.duration),
+                                                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  IconButton(
+                                                    icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
+                                                    tooltip: '播放列表',
+                                                    onPressed: () => _showQueueSheet(context),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }
+                                  }
+                                  return Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            _buildCover(song, track, colorScheme, size: 56),
+                                            const SizedBox(width: 12),
+                                            ConstrainedBox(
+                                              constraints: const BoxConstraints(maxWidth: 420),
+                                              child: _buildSongInfo(song, track, context),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Align(
+                                        alignment: Alignment.center,
+                                        child: _buildCenterControls(player, colorScheme),
+                                      ),
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: _buildRightPanel(player, colorScheme, context),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  )
+                : Column(
               children: [
                 // 进度条
                 _buildProgressBar(player, colorScheme),
@@ -72,38 +257,129 @@ class MiniPlayer extends StatelessWidget {
                 // 播放器控制栏
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Stack(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isCompact = constraints.maxWidth < 600;
+                        final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
+                        if (isCompact) {
+                          // 移动端：竖屏与横屏布局差异
+                          if (isPortrait) {
+                            // 竖屏：不显示时间，控制按钮靠右对齐
+                            return Row(
+                              children: [
+                                // 左侧：封面 + 歌曲信息
+                                Expanded(
+                                  flex: 8,
+                                  child: Row(
+                                    children: [
+                                      _buildCover(song, track, colorScheme, size: 56),
+                                      const SizedBox(width: 10),
+                                      Expanded(child: _buildSongInfo(song, track, context)),
+                                    ],
+                                  ),
+                                ),
+                                // 右侧：控制按钮 + 列表
+                                Expanded(
+                                  flex: 6,
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _buildCenterControls(player, colorScheme, hideSkip: true),
+                                        IconButton(
+                                          icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
+                                          tooltip: '播放列表',
+                                          onPressed: () => _showQueueSheet(context),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          } else {
+                            // 横屏：显示时间，控制按钮居中
+                            return Row(
+                              children: [
+                                // 左侧：封面 + 歌曲信息
+                                Expanded(
+                                  flex: 6,
+                                  child: Row(
+                                    children: [
+                                      _buildCover(song, track, colorScheme, size: 56),
+                                      const SizedBox(width: 10),
+                                      Expanded(child: _buildSongInfo(song, track, context)),
+                                    ],
+                                  ),
+                                ),
+                                // 中间：控制按钮
+                                Expanded(
+                                  flex: 4,
+                                  child: Center(child: _buildCenterControls(player, colorScheme, hideSkip: true)),
+                                ),
+                                // 右侧：时长 + 列表（隐藏音量以节省空间）
+                                Expanded(
+                                  flex: 5,
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // 时长
+                                        Text(
+                                          _formatDuration(player.position),
+                                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                        ),
+                                        const Text(' / '),
+                                        Text(
+                                          _formatDuration(player.duration),
+                                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
+                                          tooltip: '播放列表',
+                                          onPressed: () => _showQueueSheet(context),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+                        }
+                        // 桌面端：维持原三段对齐布局
+                        return Stack(
                       alignment: Alignment.center,
                       children: [
-                        // 左侧：封面 + 歌曲信息
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              _buildCover(song, track, colorScheme),
+                                  _buildCover(song, track, colorScheme, size: 56),
                               const SizedBox(width: 12),
                               ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 360),
+                                    constraints: const BoxConstraints(maxWidth: 420),
                                 child: _buildSongInfo(song, track, context),
                               ),
                             ],
                           ),
                         ),
-
-                        // 中间：上一首/播放(暂停)/下一首
                         Align(
                           alignment: Alignment.center,
                           child: _buildCenterControls(player, colorScheme),
                         ),
-
-                        // 右侧：时长 + 音量 + 歌曲列表按钮
                         Align(
                           alignment: Alignment.centerRight,
                           child: _buildRightPanel(player, colorScheme, context),
                         ),
                       ],
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -130,7 +406,7 @@ class MiniPlayer extends StatelessWidget {
   }
 
   /// 构建封面
-  Widget _buildCover(dynamic song, dynamic track, ColorScheme colorScheme) {
+  Widget _buildCover(dynamic song, dynamic track, ColorScheme colorScheme, {double size = 48}) {
     final imageUrl = song?.pic ?? track?.picUrl ?? '';
 
     return ClipRRect(
@@ -138,12 +414,12 @@ class MiniPlayer extends StatelessWidget {
       child: imageUrl.isNotEmpty
           ? CachedNetworkImage(
               imageUrl: imageUrl,
-              width: 48,
-              height: 48,
+              width: size,
+              height: size,
               fit: BoxFit.cover,
               placeholder: (context, url) => Container(
-                width: 48,
-                height: 48,
+                width: size,
+                height: size,
                 color: colorScheme.surfaceContainerHighest,
                 child: const Center(
                   child: SizedBox(
@@ -164,8 +440,8 @@ class MiniPlayer extends StatelessWidget {
               ),
             )
           : Container(
-              width: 48,
-              height: 48,
+              width: size,
+              height: size,
               color: colorScheme.surfaceContainerHighest,
               child: Icon(
                 Icons.music_note,
@@ -206,13 +482,14 @@ class MiniPlayer extends StatelessWidget {
   }
 
   /// 中间控制（上一首/播放暂停/下一首）
-  Widget _buildCenterControls(PlayerService player, ColorScheme colorScheme) {
+  Widget _buildCenterControls(PlayerService player, ColorScheme colorScheme, {bool hideSkip = false}) {
     const double skipIconSize = 24;
     const double playIconSize = 28;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (!hideSkip)
         IconButton(
           icon: Icon(
             Icons.skip_previous_rounded,
@@ -242,6 +519,7 @@ class MiniPlayer extends StatelessWidget {
             onPressed: () => player.togglePlayPause(),
             tooltip: player.isPlaying ? '暂停' : '播放',
           ),
+        if (!hideSkip)
         IconButton(
           icon: Icon(
             Icons.skip_next_rounded,

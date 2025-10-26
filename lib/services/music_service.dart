@@ -265,6 +265,10 @@ class MusicService extends ChangeNotifier {
             },
           );
           break;
+        case MusicSource.local:
+          // 本地不通过网络获取详情，直接返回 null 由 PlayerService 处理
+          DeveloperModeService().addLog('ℹ️ [MusicService] 本地歌曲无需请求');
+          return null;
       }
 
       print('🎵 [MusicService] 歌曲详情响应状态码: ${response.statusCode}');
