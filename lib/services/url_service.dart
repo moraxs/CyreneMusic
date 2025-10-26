@@ -146,6 +146,16 @@ class UrlService extends ChangeNotifier {
   String get accountsBindingsUrl => '$baseUrl/accounts/bindings';
   String get accountsUnbindNeteaseUrl => '$baseUrl/accounts/netease';
 
+  // Netease Recommend API (require user-bound cookie)
+  String get neteaseRecommendSongsUrl => '$baseUrl/recommend/songs';
+  String get neteaseRecommendResourceUrl => '$baseUrl/recommend/resource';
+  String get neteasePersonalFmUrl => '$baseUrl/personal_fm';
+  String get neteaseFmTrashUrl => '$baseUrl/fm_trash';
+  String get neteasePersonalizedPlaylistsUrl => '$baseUrl/personalized';
+  String get neteasePersonalizedNewsongUrl => '$baseUrl/personalized/newsong';
+  // Netease playlist detail
+  String get neteasePlaylistDetailUrl => '$baseUrl/playlist';
+
   // QQ Music API
   String get qqSearchUrl => '$baseUrl/qq/search';
   String get qqSongUrl => '$baseUrl/qq/song';

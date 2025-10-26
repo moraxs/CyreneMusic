@@ -39,11 +39,22 @@ class _DiscoverPlaylistDetailContentState extends State<DiscoverPlaylistDetailCo
   NeteasePlaylistDetail? _detail;
   bool _loading = true;
   String? _error;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _scrollToTop();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant DiscoverPlaylistDetailContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.playlistId != oldWidget.playlistId) {
+      _scrollToTop();
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -60,6 +71,7 @@ class _DiscoverPlaylistDetailContentState extends State<DiscoverPlaylistDetailCo
         _error = NeteaseDiscoverService().errorMessage ?? '加载失败';
       }
     });
+    _scrollToTop();
   }
 
   @override
@@ -81,64 +93,68 @@ class _DiscoverPlaylistDetailContentState extends State<DiscoverPlaylistDetailCo
       source: MusicSource.netease,
     )).toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(
-                  imageUrl: detail.coverImgUrl,
-                  width: 120,
-                  height: 120,
-                  fit: BoxFit.cover,
+    return CustomScrollView(
+      controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: CachedNetworkImage(
+                    imageUrl: detail.coverImgUrl,
+                    width: 120,
+                    height: 120,
+                    fit: BoxFit.cover,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      detail.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 6),
-                    Text('by ${detail.creator}', style: Theme.of(context).textTheme.bodyMedium),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: -6,
-                      children: detail.tags.map((t) => Chip(label: Text(t))).toList(),
-                    ),
-                  ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        detail.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 6),
+                      Text('by ${detail.creator}', style: Theme.of(context).textTheme.bodyMedium),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: -6,
+                        children: detail.tags.map((t) => Chip(label: Text(t))).toList(),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         if (detail.description.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Text(
-              detail.description,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.start,
-              style: Theme.of(context).textTheme.bodyMedium,
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Text(
+                detail.description,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.start,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             ),
           ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: ListView.builder(
-            itemCount: detail.tracks.length,
-            itemBuilder: (context, index) {
+        const SliverToBoxAdapter(child: SizedBox(height: 8)),
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
               final track = allTracks[index];
               return TrackListTile(
                 track: track,
@@ -161,10 +177,26 @@ class _DiscoverPlaylistDetailContentState extends State<DiscoverPlaylistDetailCo
                 },
               );
             },
+            childCount: detail.tracks.length,
           ),
-        )
+        ),
       ],
     );
+  }
+
+  void _scrollToTop() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(0);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<bool> _checkLoginStatus() async {
