@@ -137,6 +137,14 @@ class UrlService extends ChangeNotifier {
   String get searchUrl => '$baseUrl/search';
   String get songUrl => '$baseUrl/song';
   String get toplistsUrl => '$baseUrl/toplists';
+  // Netease Login (align with reference project)
+  String get neteaseQrKeyUrl => '$baseUrl/login/qr/key';
+  String get neteaseQrCreateUrl => '$baseUrl/login/qr/create';
+  String get neteaseQrCheckUrl => '$baseUrl/login/qr/check';
+
+  // Accounts API
+  String get accountsBindingsUrl => '$baseUrl/accounts/bindings';
+  String get accountsUnbindNeteaseUrl => '$baseUrl/accounts/netease';
 
   // QQ Music API
   String get qqSearchUrl => '$baseUrl/qq/search';

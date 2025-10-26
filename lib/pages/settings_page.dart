@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
@@ -17,6 +19,9 @@ import '../services/download_service.dart';
 import '../services/audio_quality_service.dart';
 import '../services/version_service.dart';
 import '../services/player_background_service.dart';
+import '../services/netease_login_service.dart';
+import '../services/developer_mode_service.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../pages/auth/auth_page.dart';
 import '../widgets/desktop_lyric_settings.dart';
 import '../widgets/android_floating_lyric_settings.dart';
@@ -140,6 +145,38 @@ class _SettingsPageState extends State<SettingsPage> {
   void _onPlayerBackgroundChanged() {
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  /// 显示网易云扫码登录对话框
+  Future<void> _showNeteaseQrDialog(int userId) async {
+    NeteaseQrCreateResult? created;
+    try {
+      created = await NeteaseLoginService().createQrKey();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('获取二维码失败: $e')),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+
+    final success = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => _NeteaseQrDialog(
+        userId: userId,
+        qrUrl: created!.qrUrl,
+        qrKey: created.key,
+      ),
+    );
+
+    if (success == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('网易云账号绑定成功')),
+      );
     }
   }
 
@@ -1499,17 +1536,146 @@ class _SettingsPageState extends State<SettingsPage> {
                         ],
                       ),
                     ),
-                    // 退出按钮
-                    IconButton(
-                      onPressed: _handleLogout,
-                      icon: const Icon(Icons.logout),
-                      tooltip: '退出登录',
+                    FutureBuilder<Map<String, dynamic>>(
+                      future: NeteaseLoginService().fetchBindings(),
+                      builder: (context, snapshot) {
+                        final bindings = snapshot.data?['data'] as Map<String, dynamic>?;
+                        final netease = bindings != null ? bindings['netease'] as Map<String, dynamic>? : null;
+                        final isNeteaseBound = (netease != null) && (netease['bound'] == true);
+
+                        return Row(
+                          children: [
+                            if (!isNeteaseBound)
+                              OutlinedButton.icon(
+                                onPressed: () => _showNeteaseQrDialog(user.id),
+                                icon: const Icon(Icons.qr_code),
+                                label: const Text('绑定网易云'),
+                              )
+                            else
+                              FilledButton.icon(
+                                onPressed: _showAccountManagement,
+                                icon: const Icon(Icons.manage_accounts),
+                                label: const Text('第三方账号管理'),
+                              ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              onPressed: _handleLogout,
+                              icon: const Icon(Icons.logout),
+                              tooltip: '退出登录',
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+
+  void _showAccountManagement() async {
+    // 拉取绑定信息
+    Map<String, dynamic>? data;
+    try {
+      final resp = await NeteaseLoginService().fetchBindings();
+      data = resp['data'] as Map<String, dynamic>?;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('获取绑定信息失败: $e')),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+        final netease = (data?['netease'] ?? {}) as Map<String, dynamic>;
+        final bound = netease['bound'] == true;
+        final nickname = netease['nickname'] as String?;
+        final avatarUrl = netease['avatarUrl'] as String?;
+        final neteaseUserId = netease['userId'] as String?;
+
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.manage_accounts),
+              SizedBox(width: 8),
+              Text('第三方账号管理'),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 面包屑
+                Wrap(
+                  spacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: const [
+                    Icon(Icons.home, size: 16),
+                    Text(' 设置 '),
+                    Icon(Icons.chevron_right, size: 16),
+                    Text(' 第三方账号管理 '),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                Card(
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                      child: avatarUrl == null ? const Icon(Icons.cloud) : null,
+                    ),
+                    title: const Text('网易云音乐'),
+                    subtitle: Text(bound
+                        ? '昵称: ${nickname ?? '-'}  |  用户ID: ${neteaseUserId ?? '-'}'
+                        : '未绑定'),
+                    trailing: bound
+                        ? OutlinedButton.icon(
+                            onPressed: () async {
+                              final ok = await NeteaseLoginService().unbindNetease();
+                              if (!mounted) return;
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(ok ? '已解绑网易云' : '解绑失败')),
+                              );
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.link_off),
+                            label: const Text('解绑'),
+                          )
+                        : OutlinedButton.icon(
+                            onPressed: () async {
+                              final user = AuthService().currentUser;
+                              if (user == null) return;
+                              Navigator.pop(context);
+                              await _showNeteaseQrDialog(user.id);
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.link),
+                            label: const Text('去绑定'),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('关闭'),
+            ),
+          ],
         );
       },
     );
@@ -2547,5 +2713,112 @@ class _PlayerBackgroundDialogState extends State<_PlayerBackgroundDialog> {
         );
       }
     }
+  }
+}
+
+class _NeteaseQrDialog extends StatefulWidget {
+  final int userId;
+  final String qrUrl;
+  final String qrKey;
+  const _NeteaseQrDialog({required this.userId, required this.qrUrl, required this.qrKey});
+
+  @override
+  State<_NeteaseQrDialog> createState() => _NeteaseQrDialogState();
+}
+
+class _NeteaseQrDialogState extends State<_NeteaseQrDialog> {
+  Timer? _timer;
+  String _statusText = '请使用网易云音乐 App 扫码登录';
+  bool _completed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 2), (t) async {
+      if (_completed) return;
+      try {
+        final r = await NeteaseLoginService().checkQrStatus(key: widget.qrKey, userId: widget.userId);
+        String nextStatus = _statusText;
+        bool success = false;
+        switch (r.code) {
+          case 800:
+            nextStatus = '二维码已过期，请关闭重试';
+            break;
+          case 801:
+            nextStatus = '等待扫码...';
+            break;
+          case 802:
+            nextStatus = '待确认，请在手机上确认登录';
+            break;
+          case 803:
+            success = true;
+            _completed = true;
+            break;
+          default:
+            nextStatus = r.message ?? '状态未知';
+        }
+        if (!mounted) return;
+        if (success) {
+          Navigator.of(context).pop(true);
+        } else if (nextStatus != _statusText) {
+          setState(() { _statusText = nextStatus; });
+        }
+      } catch (_) {}
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.qr_code),
+          SizedBox(width: 8),
+          Text('绑定网易云账号')
+        ],
+      ),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 220,
+              height: 220,
+              child: Center(
+                child: QrImageView(
+                  data: widget.qrUrl,
+                  version: QrVersions.auto,
+                  size: 220,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              widget.qrUrl,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _statusText,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
   }
 }
