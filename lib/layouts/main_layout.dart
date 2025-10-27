@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../widgets/custom_title_bar.dart';
 import '../widgets/mini_player.dart';
@@ -343,52 +344,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
           ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: () {
-          if (_selectedIndex == 0) return 0; // 首页
-          if (_selectedIndex == 1) return 1; // 发现
-          if (_selectedIndex == 4) return 2; // 我的
-          return 3; // 其他 -> 更多
-        }(),
-        onDestinationSelected: (int tabIndex) async {
-          if (tabIndex == 3) {
-            await _openMoreBottomSheet(context);
-            return;
-          }
-
-          int targetPageIndex = _selectedIndex;
-          if (tabIndex == 0) targetPageIndex = 0; // 首页
-          if (tabIndex == 1) targetPageIndex = 1; // 发现
-          if (tabIndex == 2) targetPageIndex = 4; // 我的
-
-          setState(() {
-            _selectedIndex = targetPageIndex;
-          });
-          PageVisibilityNotifier().setCurrentPage(targetPageIndex);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: '首页',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.explore_outlined),
-            selectedIcon: Icon(Icons.explore),
-            label: '发现',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outlined),
-            selectedIcon: Icon(Icons.person),
-            label: '我的',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.more_horiz),
-            selectedIcon: Icon(Icons.more_horiz),
-            label: '更多',
-          ),
-        ],
-      ),
+      bottomNavigationBar: _buildGlassBottomNavigationBar(context),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: AnimatedBuilder(
         animation: PlayerService(),
@@ -402,6 +358,140 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildGlassBottomNavigationBar(BuildContext context) {
+    final orientation = MediaQuery.of(context).orientation;
+    final bool useGlass = Platform.isAndroid || orientation == Orientation.portrait;
+    final baseNav = NavigationBar(
+      selectedIndex: () {
+        if (_selectedIndex == 0) return 0; // 首页
+        if (_selectedIndex == 1) return 1; // 发现
+        if (_selectedIndex == 4) return 2; // 我的
+        return 3; // 其他 -> 更多
+      }(),
+      onDestinationSelected: (int tabIndex) async {
+        if (tabIndex == 3) {
+          await _openMoreBottomSheet(context);
+          return;
+        }
+
+        int targetPageIndex = _selectedIndex;
+        if (tabIndex == 0) targetPageIndex = 0; // 首页
+        if (tabIndex == 1) targetPageIndex = 1; // 发现
+        if (tabIndex == 2) targetPageIndex = 4; // 我的
+
+        setState(() {
+          _selectedIndex = targetPageIndex;
+        });
+        PageVisibilityNotifier().setCurrentPage(targetPageIndex);
+      },
+      destinations: const [
+        NavigationDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home),
+          label: '首页',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.explore_outlined),
+          selectedIcon: Icon(Icons.explore),
+          label: '发现',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.person_outlined),
+          selectedIcon: Icon(Icons.person),
+          label: '我的',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.more_horiz),
+          selectedIcon: Icon(Icons.more_horiz),
+          label: '更多',
+        ),
+      ],
+    );
+
+    if (!useGlass) return baseNav;
+
+    final cs = Theme.of(context).colorScheme;
+    final Color? themeTint = PlayerService().themeColorNotifier.value;
+    return Theme(
+      data: Theme.of(context).copyWith(
+        navigationBarTheme: const NavigationBarThemeData(
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+        ),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 12,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+          child: Stack(
+            children: [
+              // 毛玻璃模糊层
+              Positioned.fill(
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+              // 液态玻璃渐变层
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.16),
+                        (themeTint ?? cs.primary).withOpacity(0.10),
+                        Colors.white.withOpacity(0.05),
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
+                    ),
+                    border: Border(
+                      top: BorderSide(color: Colors.white.withOpacity(0.18), width: 1),
+                    ),
+                  ),
+                ),
+              ),
+              // 高光
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: true,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment(-0.9, -0.9),
+                        radius: 1.2,
+                        colors: [
+                          Color(0x33FFFFFF),
+                          Color(0x0AFFFFFF),
+                          Colors.transparent,
+                        ],
+                        stops: [0.0, 0.45, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              baseNav,
+            ],
+          ),
+        ),
       ),
     );
   }

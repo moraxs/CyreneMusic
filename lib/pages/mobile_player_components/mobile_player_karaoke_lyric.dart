@@ -9,12 +9,14 @@ class MobilePlayerKaraokeLyric extends StatefulWidget {
   final List<LyricLine> lyrics;
   final int currentLyricIndex;
   final VoidCallback onTap;
+  final bool showTranslation;
 
   const MobilePlayerKaraokeLyric({
     super.key,
     required this.lyrics,
     required this.currentLyricIndex,
     required this.onTap,
+    required this.showTranslation,
   });
 
   @override
@@ -116,6 +118,12 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
     return LayoutBuilder(
       builder: (context, constraints) {
         final screenWidth = MediaQuery.of(context).size.width;
+        // 计算容器高度：3行主歌词；开启译文时为 主行+译文 的总高度
+        const int totalVisibleLines = 3;
+        const double lineHeight = 30.0;
+        const double translationHeight = 22.0;
+        final double itemHeight = lineHeight + (widget.showTranslation ? translationHeight : 0);
+        final double containerHeight = totalVisibleLines * itemHeight + 2.0; // 轻微冗余，避免字体度量导致的溢出
         
         return Stack(
           children: [
@@ -168,7 +176,8 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
                 _accumulatedDelta = 0.0;
               },
               child: Container(
-                height: 90, // 固定高度，容纳3行歌词
+                // 固定区域高度以容纳三行（带或不带译文）
+                height: containerHeight,
                 padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
                 child: widget.lyrics.isEmpty
                     ? _buildNoLyric(screenWidth)
@@ -218,10 +227,13 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
   Widget _buildKaraokeLyricLines(double screenWidth) {
     const int totalVisibleLines = 3; // 总共显示3行
     const int currentLinePosition = 1; // 当前歌词在第2行（索引1）
-    const double lineHeight = 30.0; // 每行高度
+    // 使用 flex 比例代替固定像素高度，避免轻微的度量误差造成溢出
+    const int mainFlex = 100; // 近似 30
+    const int transFlex = 73; // 近似 22，对应比例 30:22 ≈ 100:73
     
     final lyricFontSize = (screenWidth * 0.038).clamp(14.0, 16.0);
     final smallFontSize = lyricFontSize * 0.85;
+    final showTrans = widget.showTranslation;
     
     // 使用手动选择的索引或当前播放索引
     final displayIndex = _selectedLyricIndex ?? widget.currentLyricIndex;
@@ -229,40 +241,54 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
     // 计算显示范围
     int startIndex = displayIndex - currentLinePosition;
     
-    // 生成要显示的歌词列表
-    List<Widget> lyricWidgets = [];
-    
+    List<Widget> rows = [];
     for (int i = 0; i < totalVisibleLines; i++) {
-      int lyricIndex = startIndex + i;
-      
-      // 判断是否在有效范围内
+      final int lyricIndex = startIndex + i;
+      final int lineFlex = showTrans ? (mainFlex + transFlex) : mainFlex;
       if (lyricIndex < 0 || lyricIndex >= widget.lyrics.length) {
-        // 空行占位
-        lyricWidgets.add(
-          SizedBox(
-            height: lineHeight,
+        // 空行
+        rows.add(
+          Expanded(
             key: ValueKey('empty_$i'),
+            flex: lineFlex,
+            child: const SizedBox.shrink(),
           ),
         );
-      } else {
-        // 显示歌词
-        final lyric = widget.lyrics[lyricIndex];
-        final isCurrent = lyricIndex == displayIndex;
-        final isActuallyPlaying = lyricIndex == widget.currentLyricIndex;
-        
-        lyricWidgets.add(
-          SizedBox(
-            height: lineHeight,
-            key: ValueKey('lyric_$lyricIndex'),
-            child: isCurrent 
-                ? _buildKaraokeLyricLine(lyric, lyricFontSize, isActuallyPlaying)
-                : _buildNormalLyricLine(lyric, smallFontSize, false),
-          ),
-        );
+        continue;
       }
+      final lyric = widget.lyrics[lyricIndex];
+      final isCurrent = lyricIndex == displayIndex;
+      final isActuallyPlaying = lyricIndex == widget.currentLyricIndex;
+      rows.add(
+        Expanded(
+          key: ValueKey('lyric_$lyricIndex'),
+          flex: lineFlex,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Expanded(
+                flex: mainFlex,
+                child: Center(
+                  child: isCurrent
+                      ? _buildKaraokeLyricLine(lyric, lyricFontSize, isActuallyPlaying)
+                      : _buildNormalLyricLine(lyric, smallFontSize, false),
+                ),
+              ),
+              if (showTrans)
+                Expanded(
+                  flex: transFlex,
+                  child: Center(
+                    child: (lyric.translation != null && lyric.translation!.trim().isNotEmpty)
+                        ? _buildTranslationLine(lyric.translation!, smallFontSize * 0.95)
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
     }
     
-    // 使用 AnimatedSwitcher 实现丝滑滚动效果
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
       layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
@@ -274,24 +300,19 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
         );
       },
       transitionBuilder: (Widget child, Animation<double> animation) {
-        // 向上滑动的过渡效果
         final offsetAnimation = Tween<Offset>(
-          begin: const Offset(0.0, 0.3), // 从下方30%处开始
+          begin: const Offset(0.0, 0.3),
           end: Offset.zero,
         ).animate(CurvedAnimation(
           parent: animation,
           curve: Curves.easeOutCubic,
         ));
-        
-        return SlideTransition(
-          position: offsetAnimation,
-          child: child,
-        );
+        return SlideTransition(position: offsetAnimation, child: child);
       },
       child: Column(
-        key: ValueKey(displayIndex), // 关键：当索引变化时触发动画
+        key: ValueKey(displayIndex),
         mainAxisAlignment: MainAxisAlignment.center,
-        children: lyricWidgets,
+        children: rows,
       ),
     );
   }
@@ -350,6 +371,30 @@ class _MobilePlayerKaraokeLyricState extends State<MobilePlayerKaraokeLyric> wit
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 构建翻译行
+  Widget _buildTranslationLine(String translation, double fontSize) {
+    return ValueListenableBuilder<Color?>(
+      valueListenable: PlayerService().themeColorNotifier,
+      builder: (context, themeColor, child) {
+        final baseColor = _getAdaptiveLyricColor(themeColor, false).withOpacity(0.75);
+        return Center(
+          child: Text(
+            translation,
+            style: TextStyle(
+              color: baseColor,
+              fontSize: fontSize,
+              fontWeight: FontWeight.normal,
+              fontFamily: 'Microsoft YaHei',
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         );
       },

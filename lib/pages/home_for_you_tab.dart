@@ -9,9 +9,10 @@ import 'discover_playlist_detail_page.dart';
 
 /// 首页 - 为你推荐 Tab 内容
 class HomeForYouTab extends StatefulWidget {
-  const HomeForYouTab({super.key, this.onOpenPlaylistDetail});
+  const HomeForYouTab({super.key, this.onOpenPlaylistDetail, this.onOpenDailyDetail});
 
   final void Function(int playlistId)? onOpenPlaylistDetail;
+  final void Function(List<Map<String, dynamic>> tracks)? onOpenDailyDetail;
 
   @override
   State<HomeForYouTab> createState() => _HomeForYouTabState();
@@ -19,7 +20,6 @@ class HomeForYouTab extends StatefulWidget {
 
 class _HomeForYouTabState extends State<HomeForYouTab> {
   late Future<_ForYouData> _future;
-  bool _showDailyDetail = false;
   
   @override
   void initState() {
@@ -60,22 +60,13 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
         final data = snapshot.data!;
         return Stack(
           children: [
-            RefreshIndicator(
-              onRefresh: () async {
-                setState(() {
-                  _future = _load();
-                });
-                await _future;
-              },
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-              child: Column(
+            Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const _GreetingHeader(),
                   _DailyRecommendCard(
                     tracks: data.dailySongs,
-                    onOpenDetail: () => setState(() => _showDailyDetail = true),
+                  onOpenDetail: () => widget.onOpenDailyDetail?.call(data.dailySongs),
                   ),
                   const SizedBox(height: 24),
                   _SectionTitle(title: '私人FM'),
@@ -103,21 +94,8 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
                   _NewsongList(list: data.personalizedNewsongs),
                   const SizedBox(height: 16),
                 ],
-              ),
-            ),
             ),
 
-            if (_showDailyDetail)
-              Positioned.fill(
-                child: Material(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: DailyRecommendDetailPage(
-                    tracks: data.dailySongs,
-                    embedded: true,
-                    onClose: () => setState(() => _showDailyDetail = false),
-                  ),
-                ),
-              ),
           ],
         );
       },
@@ -248,19 +226,115 @@ class _DailyRecommendCard extends StatelessWidget {
             );
           }
         },
-        child: Container(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bool isNarrow = constraints.maxWidth < 480;
+            final EdgeInsets contentPadding = const EdgeInsets.all(16);
+            if (isNarrow) {
+              // 移动端：横向布局，左侧方形封面网格，右侧信息与按钮
+              final double gridSize = (constraints.maxWidth * 0.38).clamp(120.0, 180.0);
+              return Padding(
+                padding: contentPadding,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: gridSize,
+                      height: gridSize,
+                      child: _buildCoverGrid(context, coverImages),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '每日推荐',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: cs.primary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '${tracks.length} 首歌曲',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: cs.onSurface.withOpacity(0.65),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(Icons.auto_awesome, size: 18, color: cs.primary),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  '根据你的音乐品味每日更新',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurface.withOpacity(0.7),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 140),
+                              child: FilledButton.icon(
+                                onPressed: () {
+                                  if (onOpenDetail != null) {
+                                    onOpenDetail!();
+                                  } else {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) => DailyRecommendDetailPage(tracks: tracks),
+                                      ),
+                                    );
+                                  }
+                                },
+                                icon: const Icon(Icons.chevron_right, size: 20),
+                                label: const Text('查看全部'),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            // 宽屏：保持横向布局和固定高度
+            return Container(
           height: 200,
-          padding: const EdgeInsets.all(20),
+              padding: contentPadding.add(const EdgeInsets.all(4)),
           child: Row(
             children: [
-              // 左侧：封面网格（2x2）
               SizedBox(
                 width: 160,
                 height: 160,
                 child: _buildCoverGrid(context, coverImages),
               ),
               const SizedBox(width: 24),
-              // 右侧：信息
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -348,6 +422,8 @@ class _DailyRecommendCard extends StatelessWidget {
               ),
             ],
           ),
+            );
+          },
         ),
       ),
     );
@@ -363,7 +439,9 @@ class _DailyRecommendCard extends StatelessWidget {
     }
     
     return GridView.builder(
+      padding: EdgeInsets.zero,
       physics: const NeverScrollableScrollPhysics(),
+      shrinkWrap: true,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         crossAxisSpacing: 4,

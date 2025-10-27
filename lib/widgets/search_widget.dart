@@ -161,7 +161,9 @@ class _SearchWidgetState extends State<SearchWidget> {
     final colorScheme = Theme.of(context).colorScheme;
     final searchResult = _searchService.searchResult;
 
-    return Stack(
+    return SafeArea(
+      bottom: false,
+      child: Stack(
       children: [
         Column(
           children: [
@@ -319,7 +321,7 @@ class _SearchWidgetState extends State<SearchWidget> {
             ),
           ),
       ],
-    );
+    ));
   }
 
   Widget _buildSongResults(SearchResult result) {

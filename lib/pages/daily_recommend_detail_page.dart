@@ -21,10 +21,79 @@ class DailyRecommendDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
+    if (embedded) {
+      // 覆盖层嵌入模式：与歌单详情覆盖层保持一致的层级与二级菜单
+      return SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // 顶部栏：返回 + 标题
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    onPressed: () {
+                      if (onClose != null) {
+                        onClose!();
+                      } else {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    tooltip: '返回',
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '每日推荐',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: PrimaryScrollController.none(
+                child: tracks.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.music_note_outlined,
+                              size: 64,
+                              color: colorScheme.onSurface.withOpacity(0.3),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '暂无推荐',
+                              style: TextStyle(
+                                color: colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                        itemCount: tracks.length,
+                        itemBuilder: (context, index) => _buildTrackTile(context, tracks[index], index),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 独立页面模式
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // 自定义 AppBar（支持面包屑和标题）
           SliverAppBar(
             expandedHeight: 120,
             floating: false,
@@ -46,7 +115,6 @@ class DailyRecommendDetailPage extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 面包屑导航
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -85,7 +153,6 @@ class DailyRecommendDetailPage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 2),
-                  // 页面标题
                   Text(
                     '每日推荐',
                     style: TextStyle(
@@ -98,7 +165,6 @@ class DailyRecommendDetailPage extends StatelessWidget {
               ),
             ),
             actions: [
-              // 播放全部按钮
               Padding(
                 padding: const EdgeInsets.only(right: 16.0),
                 child: FilledButton.icon(
@@ -109,8 +175,6 @@ class DailyRecommendDetailPage extends StatelessWidget {
               ),
             ],
           ),
-          
-          // 歌曲列表
           tracks.isEmpty
               ? SliverFillRemaining(
                   child: Center(
