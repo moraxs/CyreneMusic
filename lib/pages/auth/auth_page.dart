@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
+import '../../services/auth_overlay_service.dart';
 import '../../services/auth_service.dart';
 
-/// 显示认证对话框（内嵌到主窗口）
+/// 显示认证页面（改为内嵌 Stack 页面，而非对话框）
 Future<bool?> showAuthDialog(BuildContext context, {int initialTab = 0}) {
-  return showDialog<bool>(
-    context: context,
-    barrierDismissible: true,
-    barrierColor: Colors.black54,
-    builder: (context) => AuthPage(initialTab: initialTab),
+  // 桌面端（Windows/macOS/Linux）：走内容区覆盖层服务，避免新路由拦截焦点
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    return AuthOverlayService().show(initialTab: initialTab);
+  }
+
+  // 移动端：保持整页路由体验
+  return Navigator.push<bool>(
+    context,
+    MaterialPageRoute(
+      builder: (context) => AuthPage(initialTab: initialTab),
+    ),
   );
 }
 
@@ -40,134 +48,94 @@ class _AuthPageState extends State<AuthPage> with SingleTickerProviderStateMixin
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final size = MediaQuery.of(context).size;
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: EdgeInsets.symmetric(
-        horizontal: size.width > 600 ? 40 : 16,
-        vertical: 24,
+    return Scaffold(
+      backgroundColor: colorScheme.surface,
+      appBar: AppBar(
+        backgroundColor: colorScheme.surface,
+        title: const Text('账号'),
       ),
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: 580,
-          maxHeight: size.height * 0.92,
-        ),
-        child: Material(
-          type: MaterialType.card,
-          elevation: 24,
-          color: colorScheme.surface,
-          surfaceTintColor: colorScheme.surfaceTint,
-          shadowColor: colorScheme.shadow,
-          borderRadius: BorderRadius.circular(28), // Material 3 标准圆角
-          clipBehavior: Clip.antiAlias,
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  colorScheme.surface,
-                  colorScheme.surfaceContainerLow,
-                  colorScheme.surfaceContainerLowest,
-                ],
-                stops: const [0.0, 0.5, 1.0],
-              ),
-            ),
-            child: Stack(
-              children: [
-                // 背景装饰渐变
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: Alignment.topRight,
-                        radius: 1.5,
-                        colors: [
-                          colorScheme.primaryContainer.withOpacity(0.15),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: Alignment.bottomLeft,
-                        radius: 1.5,
-                        colors: [
-                          colorScheme.secondaryContainer.withOpacity(0.12),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                
-                // 主内容
-                Column(
-                  children: [
-                    // 顶部关闭按钮
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8, right: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          IconButton(
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close_rounded),
-                            style: IconButton.styleFrom(
-                              foregroundColor: colorScheme.onSurfaceVariant,
-                            ),
-                            tooltip: '关闭',
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    // 内容区域
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Logo 和标题
-                            _buildHeader(colorScheme),
-                            
-                            const SizedBox(height: 32),
-                            
-                            // Tab 指示器
-                            _buildTabBar(colorScheme),
-                            
-                            const SizedBox(height: 24),
-                            
-                            // Tab 内容
-                            SizedBox(
-                              height: 480,
-                              child: TabBarView(
-                                controller: _tabController,
-                                physics: const NeverScrollableScrollPhysics(),
-                                children: const [
-                                  _LoginView(),
-                                  _RegisterView(),
-                                  _ForgotPasswordView(),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+      body: Stack(
+        children: [
+          // 背景装饰渐变（与对话框样式一致，改为全屏）
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.topRight,
+                  radius: 1.5,
+                  colors: [
+                    colorScheme.primaryContainer.withOpacity(0.15),
+                    Colors.transparent,
                   ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.bottomLeft,
+                  radius: 1.5,
+                  colors: [
+                    colorScheme.secondaryContainer.withOpacity(0.12),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // 主内容
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Logo 和标题
+                  _buildHeader(colorScheme),
+                  const SizedBox(height: 24),
+                  // Tab 指示器
+                  _buildTabBar(colorScheme),
+                  const SizedBox(height: 16),
+                  // Tab 内容
+                  SizedBox(
+                    height: 480,
+                    child: TabBarView(
+                      controller: _tabController,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: const [
+                        _LoginView(),
+                        _RegisterView(),
+                        _ForgotPasswordView(),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // 桌面覆盖层下的返回按钮（避免依赖系统返回）
+                  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+                    Align(
+                      alignment: Alignment.center,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          // 如果使用覆盖层，则关闭覆盖层；否则正常返回
+                          if (AuthOverlayService().isVisible) {
+                            AuthOverlayService().hide(false);
+                          } else {
+                            Navigator.of(context).maybePop();
+                          }
+                        },
+                        icon: const Icon(Icons.check),
+                        label: const Text('完成'),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -353,7 +321,12 @@ class _LoginViewState extends State<_LoginView> {
           print('❌ [AuthPage] IP归属地更新异常: $error');
         });
         
-        Navigator.pop(context, true);
+        // 覆盖层模式下关闭覆盖层，否则关闭路由
+        if (AuthOverlayService().isVisible) {
+          AuthOverlayService().hide(true);
+        } else {
+          Navigator.pop(context, true);
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -596,7 +569,11 @@ class _RegisterViewState extends State<_RegisterView> {
             ),
           ),
         );
-        Navigator.pop(context);
+        if (AuthOverlayService().isVisible) {
+          AuthOverlayService().hide(true);
+        } else {
+          Navigator.pop(context, true);
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -938,7 +915,11 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
             ),
           ),
         );
-        Navigator.pop(context);
+        if (AuthOverlayService().isVisible) {
+          AuthOverlayService().hide(true);
+        } else {
+          Navigator.pop(context, true);
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

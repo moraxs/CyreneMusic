@@ -162,6 +162,11 @@ class _TrackListTileState extends State<TrackListTile> {
         // 检查登录状态
         final isLoggedIn = await _checkLoginStatus();
         if (isLoggedIn && mounted) {
+          // 预取封面 Provider，供播放器复用，避免再次请求
+          if (widget.track.picUrl.isNotEmpty) {
+            final provider = CachedNetworkImageProvider(widget.track.picUrl);
+            PlayerService().setCurrentCoverImageProvider(provider);
+          }
           // 播放歌曲
           PlayerService().playTrack(widget.track);
           ScaffoldMessenger.of(context).showSnackBar(

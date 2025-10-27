@@ -412,33 +412,7 @@ class MiniPlayer extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: imageUrl.isNotEmpty
-          ? CachedNetworkImage(
-              imageUrl: imageUrl,
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Container(
-                width: size,
-                height: size,
-                color: colorScheme.surfaceContainerHighest,
-                child: const Center(
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              ),
-              errorWidget: (context, url, error) => Container(
-                width: 48,
-                height: 48,
-                color: colorScheme.surfaceContainerHighest,
-                child: Icon(
-                  Icons.music_note,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            )
+          ? _optimizedCover(imageUrl, size, colorScheme)
           : Container(
               width: size,
               height: size,
@@ -448,6 +422,45 @@ class MiniPlayer extends StatelessWidget {
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
+    );
+  }
+
+  Widget _optimizedCover(String imageUrl, double size, ColorScheme colorScheme) {
+    final provider = PlayerService().currentCoverImageProvider;
+    if (provider != null) {
+      return Image(
+        image: provider,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: imageUrl,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      placeholder: (context, url) => Container(
+        width: size,
+        height: size,
+        color: colorScheme.surfaceContainerHighest,
+        child: const Center(
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ),
+      errorWidget: (context, url, error) => Container(
+        width: 48,
+        height: 48,
+        color: colorScheme.surfaceContainerHighest,
+        child: Icon(
+          Icons.music_note,
+          color: colorScheme.onSurfaceVariant,
+        ),
+      ),
     );
   }
 

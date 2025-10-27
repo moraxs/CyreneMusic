@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/netease_recommend_service.dart';
 import '../models/track.dart';
@@ -6,6 +7,8 @@ import '../services/player_service.dart';
 import '../services/playlist_queue_service.dart';
 import 'daily_recommend_detail_page.dart';
 import 'discover_playlist_detail_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/auth_service.dart';
 
 /// 首页 - 为你推荐 Tab 内容
 class HomeForYouTab extends StatefulWidget {
@@ -28,6 +31,26 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
   }
 
   Future<_ForYouData> _load() async {
+    // 1) 先尝试读取当日缓存
+    final prefs = await SharedPreferences.getInstance();
+    final cacheBase = _cacheBaseKey();
+    final dataKey = '${cacheBase}_data';
+    final expireKey = '${cacheBase}_expire';
+    final now = DateTime.now();
+    final expireMs = prefs.getInt(expireKey);
+    if (expireMs != null && now.millisecondsSinceEpoch < expireMs) {
+      final jsonString = prefs.getString(dataKey);
+      if (jsonString != null && jsonString.isNotEmpty) {
+        try {
+          final data = _ForYouData.fromJsonString(jsonString);
+          return data;
+        } catch (_) {
+          // 解析失败，继续走网络请求
+        }
+      }
+    }
+
+    // 2) 拉取网络数据
     final svc = NeteaseRecommendService();
     final dailySongs = await svc.fetchDailySongs();
     final fm = await svc.fetchPersonalFm();
@@ -35,7 +58,7 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
     final personalized = await svc.fetchPersonalizedPlaylists(limit: 12);
     final radar = await svc.fetchRadarPlaylists();
     final newsongs = await svc.fetchPersonalizedNewsongs(limit: 10);
-    return _ForYouData(
+    final result = _ForYouData(
       dailySongs: dailySongs,
       fm: fm,
       dailyPlaylists: dailyPlaylists,
@@ -43,6 +66,20 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
       radarPlaylists: radar,
       personalizedNewsongs: newsongs,
     );
+
+    // 3) 写入当日缓存（有效期至当日 23:59:59）
+    try {
+      final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+      await prefs.setString(dataKey, result.toJsonString());
+      await prefs.setInt(expireKey, endOfDay.millisecondsSinceEpoch);
+    } catch (_) {}
+
+    return result;
+  }
+
+  String _cacheBaseKey() {
+    final userId = AuthService().currentUser?.id?.toString() ?? 'guest';
+    return 'home_for_you_$userId';
   }
 
   @override
@@ -118,6 +155,33 @@ class _ForYouData {
     required this.radarPlaylists,
     required this.personalizedNewsongs,
   });
+
+  Map<String, dynamic> toJson() => {
+        'dailySongs': dailySongs,
+        'fm': fm,
+        'dailyPlaylists': dailyPlaylists,
+        'personalizedPlaylists': personalizedPlaylists,
+        'radarPlaylists': radarPlaylists,
+        'personalizedNewsongs': personalizedNewsongs,
+      };
+
+  String toJsonString() => jsonEncode(toJson());
+
+  static _ForYouData fromJson(Map<String, dynamic> json) {
+    return _ForYouData(
+      dailySongs: (json['dailySongs'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+      fm: (json['fm'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+      dailyPlaylists: (json['dailyPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+      personalizedPlaylists: (json['personalizedPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+      radarPlaylists: (json['radarPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+      personalizedNewsongs: (json['personalizedNewsongs'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+    );
+  }
+
+  static _ForYouData fromJsonString(String s) {
+    final map = jsonDecode(s) as Map<String, dynamic>;
+    return fromJson(map);
+  }
 }
 
 class _SectionTitle extends StatelessWidget {

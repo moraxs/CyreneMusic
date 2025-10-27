@@ -13,6 +13,27 @@ class UserCard extends StatefulWidget {
 
 class _UserCardState extends State<UserCard> {
   @override
+  void initState() {
+    super.initState();
+    AuthService().addListener(_onAuthChanged);
+    LocationService().addListener(_onLocationChanged);
+  }
+
+  @override
+  void dispose() {
+    AuthService().removeListener(_onAuthChanged);
+    LocationService().removeListener(_onLocationChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onLocationChanged() {
+    if (mounted) setState(() {});
+  }
+  @override
   Widget build(BuildContext context) {
     final isLoggedIn = AuthService().isLoggedIn;
     final user = AuthService().currentUser;

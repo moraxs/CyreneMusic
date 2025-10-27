@@ -74,31 +74,43 @@ class PlayerSongInfo extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: imageUrl.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: imageUrl,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  color: Colors.grey[800],
-                  child: const Center(
-                    child: SizedBox(
-                      width: 50,
-                      height: 50,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        color: Colors.white54,
-                      ),
-                    ),
-                  ),
-                ),
-                errorWidget: (context, url, error) => Container(
-                  color: Colors.grey[800],
-                  child: const Icon(Icons.music_note, size: 100, color: Colors.white54),
-                ),
-              )
+            ? _buildOptimizedCover(imageUrl)
             : Container(
                 color: Colors.grey[800],
                 child: const Icon(Icons.music_note, size: 100, color: Colors.white54),
               ),
+      ),
+    );
+  }
+
+  Widget _buildOptimizedCover(String imageUrl) {
+    // 优先使用播放前由列表项传入并已预取的 Provider，避免再次网络请求
+    final provider = PlayerService().currentCoverImageProvider;
+    if (provider != null) {
+      return Image(
+        image: provider,
+        fit: BoxFit.cover,
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: imageUrl,
+      fit: BoxFit.cover,
+      placeholder: (context, url) => Container(
+        color: Colors.grey[800],
+        child: const Center(
+          child: SizedBox(
+            width: 50,
+            height: 50,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: Colors.white54,
+            ),
+          ),
+        ),
+      ),
+      errorWidget: (context, url, error) => Container(
+        color: Colors.grey[800],
+        child: const Icon(Icons.music_note, size: 100, color: Colors.white54),
       ),
     );
   }

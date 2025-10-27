@@ -23,6 +23,22 @@ class _ThirdPartyAccountsState extends State<ThirdPartyAccounts> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    AuthService().addListener(_onAuthChanged);
+  }
+
+  @override
+  void dispose() {
+    AuthService().removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    _refresh();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final user = AuthService().currentUser;
     

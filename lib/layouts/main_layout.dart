@@ -16,6 +16,7 @@ import '../services/developer_mode_service.dart';
 import '../utils/page_visibility_notifier.dart';
 import '../utils/theme_manager.dart';
 import '../pages/auth/auth_page.dart';
+import '../services/auth_overlay_service.dart';
 import '../services/player_service.dart';
 
 /// 主布局 - 包含侧边导航栏和内容区域
@@ -177,10 +178,16 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
       // 已登录，显示用户菜单
       _showUserMenu();
     } else {
-      // 未登录，跳转到登录页面
-      showAuthDialog(context).then((_) {
-        if (mounted) setState(() {});
-      });
+      // 未登录：桌面端使用覆盖层；移动端使用整页
+      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+        AuthOverlayService().show().then((_) {
+          if (mounted) setState(() {});
+        });
+      } else {
+        showAuthDialog(context).then((_) {
+          if (mounted) setState(() {});
+        });
+      }
     }
   }
 
@@ -295,16 +302,60 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
           
           // 主要内容区域
           Expanded(
-            child: Row(
-              children: [
-                // 侧边导航栏
-                _buildNavigationDrawer(colorScheme),
-                
-                // 内容区域
-                Expanded(
-                  child: _pages[_selectedIndex],
-                ),
-              ],
+            child: AnimatedBuilder(
+              animation: AuthOverlayService(),
+              builder: (context, child) {
+                final overlay = AuthOverlayService();
+                return Stack(
+                  children: [
+                    Row(
+                      children: [
+                        // 侧边导航栏
+                        _buildNavigationDrawer(colorScheme),
+                        // 内容区域
+                        Expanded(
+                          child: _pages[_selectedIndex],
+                        ),
+                      ],
+                    ),
+                    if (overlay.isVisible)
+                      // 完全参照首页-歌单详情样式：覆盖右侧内容区，保留侧栏与标题栏
+                      Positioned.fill(
+                        child: Row(
+                          children: [
+                            // 占位侧栏宽度
+                            SizedBox(width: _isDrawerCollapsed ? _collapsedWidth : _drawerWidth),
+                            // 右侧内容覆盖
+                            Expanded(
+                              child: Material(
+                                color: Theme.of(context).colorScheme.surface,
+                                child: SafeArea(
+                                  child: Column(
+                                    children: [
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: IconButton(
+                                          icon: const Icon(Icons.arrow_back_rounded),
+                                          onPressed: () => AuthOverlayService().hide(false),
+                                          tooltip: '返回',
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: PrimaryScrollController.none(
+                                          child: AuthPage(initialTab: overlay.initialTab),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
           ),
           

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
+import 'package:flutter/material.dart' show ImageProvider; // for cover provider
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart' as ap;
@@ -54,6 +55,7 @@ class PlayerService extends ChangeNotifier {
   final Map<String, Color> _themeColorCache = {}; // 主题色缓存
   final ValueNotifier<Color?> themeColorNotifier = ValueNotifier<Color?>(null); // 主题色通知器
   double _volume = 1.0; // 当前音量 (0.0 - 1.0)
+  ImageProvider? _currentCoverImageProvider; // 当前歌曲的预取封面图像提供器（避免二次请求）
   
   // 听歌统计相关
   async_lib.Timer? _statsTimer; // 统计定时器
@@ -74,6 +76,13 @@ class PlayerService extends ChangeNotifier {
   bool get isPaused => _state == PlayerState.paused;
   bool get isLoading => _state == PlayerState.loading;
   double get volume => _volume; // 获取当前音量
+  ImageProvider? get currentCoverImageProvider => _currentCoverImageProvider;
+
+  /// 设置当前歌曲的预取封面图像提供器
+  void setCurrentCoverImageProvider(ImageProvider? provider) {
+    _currentCoverImageProvider = provider;
+    // 不触发 notifyListeners 以避免无谓 rebuild，由 PlayerSongInfo/MiniPlayer 读取时刷新
+  }
 
   /// 初始化播放器监听
   Future<void> initialize() async {
