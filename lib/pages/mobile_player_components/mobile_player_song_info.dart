@@ -5,6 +5,8 @@ import '../../services/player_background_service.dart';
 import '../../models/track.dart';
 import '../../models/song_detail.dart';
 import '../../widgets/search_widget.dart';
+import '../../services/netease_artist_service.dart';
+import '../artist_detail_page.dart';
 
 /// 移动端播放器歌曲信息组件
 /// 显示专辑封面、歌曲名称、艺术家等信息
@@ -185,7 +187,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
                   SizedBox(height: screenWidth * 0.02),
                   
                   // 艺术家（多个可点击）
-                  _buildArtistsRow(context, artists, subtitleColor, screenWidth),
+                  _buildArtistsRow(context, artists, subtitleColor, screenWidth, song),
                   
                   // 专辑（可点击）
                   if (album.isNotEmpty) ...[
@@ -231,7 +233,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
   }
 
   /// 构建多个艺术家的可点击行
-  Widget _buildArtistsRow(BuildContext context, List<String> artists, Color baseColor, double screenWidth) {
+  Widget _buildArtistsRow(BuildContext context, List<String> artists, Color baseColor, double screenWidth, SongDetail? song) {
     final artistFontSize = (screenWidth * 0.04).clamp(14.0, 17.0);
     
     return Wrap(
@@ -247,7 +249,7 @@ class MobilePlayerSongInfo extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             InkWell(
-              onTap: () => _searchInDialog(context, artist),
+              onTap: () => _onArtistTap(context, artist, song),
               borderRadius: BorderRadius.circular(4),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -271,6 +273,45 @@ class MobilePlayerSongInfo extends StatelessWidget {
           ],
         );
       }).toList(),
+    );
+  }
+
+  Future<void> _onArtistTap(BuildContext context, String artistName, SongDetail? song) async {
+    // 非网易云：仍然按原逻辑打开搜索
+    if (song?.source != MusicSource.netease) {
+      _searchInDialog(context, artistName);
+      return;
+    }
+
+    // 网易云：尝试解析歌手ID；失败则回退到搜索
+    final id = await NeteaseArtistDetailService().resolveArtistIdByName(artistName);
+    if (id == null) {
+      _searchInDialog(context, artistName);
+      return;
+    }
+    if (!context.mounted) return;
+
+    // 在对话框中显示歌手详情（与桌面一致的样式，尺寸自适应移动端）
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(12),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 800, maxHeight: 700),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: ArtistDetailContent(
+              artistId: id,
+            ),
+          ),
+        ),
+      ),
     );
   }
 

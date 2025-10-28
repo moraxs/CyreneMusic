@@ -32,6 +32,7 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
   
   // 控制中心
   bool _showControlCenter = false;
+  bool _showTranslation = true;
   AnimationController? _controlCenterAnimationController;
   Animation<double>? _controlCenterFadeAnimation;
 
@@ -41,6 +42,20 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
     _initializeAnimations();
     _setupListeners();
     _initializeData();
+  }
+
+  /// 是否应该显示译文按钮（与全屏歌词页一致逻辑）
+  bool _shouldShowTranslationButton() {
+    if (_lyrics.isEmpty) return false;
+    final hasTranslation = _lyrics.any((l) => l.translation != null && l.translation!.isNotEmpty);
+    if (!hasTranslation) return false;
+    final sample = _lyrics.where((l) => l.text.trim().isNotEmpty).take(5).map((l) => l.text).join('');
+    if (sample.isEmpty) return false;
+    final chineseCount = sample.runes.where((r) =>
+      (r >= 0x4E00 && r <= 0x9FFF) || (r >= 0x3400 && r <= 0x4DBF) || (r >= 0x20000 && r <= 0x2A6DF)
+    ).length;
+    final ratio = chineseCount / sample.length;
+    return ratio < 0.3; // 中文占比小于30%判定为外文
   }
 
   @override
@@ -334,32 +349,76 @@ class _MobilePlayerPageState extends State<MobilePlayerPage> with TickerProvider
                             flex: 25,
                             child: Transform.translate(
                               offset: const Offset(0, -80), // 向上移动80像素（增加上移幅度）
-                              child: Align(
-                                alignment: Alignment.center,
-                                child: MobilePlayerKaraokeLyric(
-                                  lyrics: _lyrics,
-                                  currentLyricIndex: _currentLyricIndex,
-                                  onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const MobileLyricPage(),
-              ),
-                                  ),
+                          child: Align(
+                            alignment: Alignment.center,
+                            child: MobilePlayerKaraokeLyric(
+                              lyrics: _lyrics,
+                              currentLyricIndex: _currentLyricIndex,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const MobileLyricPage(),
                                 ),
                               ),
+                              showTranslation: _showTranslation && _shouldShowTranslationButton(),
+                            ),
+                          ),
                 ),
               ),
             ],
           ),
                     ),
                     
-                    // 底部控制区域
-                    MobilePlayerControls(
-                      onPlaylistPressed: () => MobilePlayerDialogs.showPlaylistBottomSheet(context),
-                      onSleepTimerPressed: () => MobilePlayerDialogs.showSleepTimer(context),
-                      onVolumeControlPressed: _toggleControlCenter,
-                      onAddToPlaylistPressed: (track) => MobilePlayerDialogs.showAddToPlaylist(context, track),
-                ),
+                    // 底部控制区域 + 左下角译文开关
+                    Stack(
+                      children: [
+                        MobilePlayerControls(
+                          onPlaylistPressed: () => MobilePlayerDialogs.showPlaylistBottomSheet(context),
+                          onSleepTimerPressed: () => MobilePlayerDialogs.showSleepTimer(context),
+                          onVolumeControlPressed: _toggleControlCenter,
+                          onAddToPlaylistPressed: (track) => MobilePlayerDialogs.showAddToPlaylist(context, track),
+                        ),
+                        if (_shouldShowTranslationButton())
+                          Positioned(
+                          left: 12,
+                          bottom: 12,
+                          child: Tooltip(
+                            message: _showTranslation ? '隐藏译文' : '显示译文',
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(6),
+                              onTap: () {
+                                setState(() => _showTranslation = !_showTranslation);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(_showTranslation ? '已显示译文' : '已隐藏译文'),
+                                    duration: const Duration(seconds: 1),
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                width: 30,
+                                height: 30,
+                                decoration: BoxDecoration(
+                                  color: _showTranslation ? Colors.white.withOpacity(0.2) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    '译',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      fontFamily: 'Microsoft YaHei',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
               ],
             );
           },

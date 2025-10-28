@@ -168,12 +168,12 @@ class _SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.all(24.0),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                // 用户卡片
-                const UserCard(),
+                // 用户卡片（需随登录状态刷新，不能使用 const）
+                UserCard(),
                 const SizedBox(height: 24),
                 
-                // 第三方账号管理（仅登录时显示）
-                const ThirdPartyAccounts(),
+                // 第三方账号管理（需随登录状态刷新，不能使用 const）
+                ThirdPartyAccounts(),
                 const SizedBox(height: 24),
                 
                 // 外观设置

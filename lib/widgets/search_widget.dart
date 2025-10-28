@@ -161,7 +161,9 @@ class _SearchWidgetState extends State<SearchWidget> {
     final colorScheme = Theme.of(context).colorScheme;
     final searchResult = _searchService.searchResult;
 
-    return Stack(
+    return SafeArea(
+      bottom: false,
+      child: Stack(
       children: [
         Column(
           children: [
@@ -319,7 +321,7 @@ class _SearchWidgetState extends State<SearchWidget> {
             ),
           ),
       ],
-    );
+    ));
   }
 
   Widget _buildSongResults(SearchResult result) {
@@ -575,6 +577,11 @@ class _SearchWidgetState extends State<SearchWidget> {
     if (!isLoggedIn) return;
 
     final bestTrack = mergedTrack.getBestTrack();
+    // 播放前注入封面 Provider，避免播放器再次请求
+    if (bestTrack.picUrl.isNotEmpty) {
+      final provider = CachedNetworkImageProvider(bestTrack.picUrl);
+      PlayerService().setCurrentCoverImageProvider(provider);
+    }
     PlayerService().playTrack(bestTrack);
     
     if (mounted) {
@@ -622,6 +629,10 @@ class _SearchWidgetState extends State<SearchWidget> {
                 // 检查登录状态
                 final isLoggedIn = await _checkLoginStatus();
                 if (isLoggedIn && mounted) {
+                  if (track.picUrl.isNotEmpty) {
+                    final provider = CachedNetworkImageProvider(track.picUrl);
+                    PlayerService().setCurrentCoverImageProvider(provider);
+                  }
                   PlayerService().playTrack(track);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(

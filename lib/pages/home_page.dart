@@ -28,6 +28,7 @@ import '../services/url_service.dart';
 import '../services/netease_login_service.dart';
 import 'home_for_you_tab.dart';
 import 'discover_playlist_detail_page.dart';
+import 'daily_recommend_detail_page.dart';
 
 /// 首页 - 展示音乐和视频内容
 class HomePage extends StatefulWidget {
@@ -49,6 +50,8 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
   int _homeTabIndex = 1; // 0: 为你推荐, 1: 推荐（默认显示推荐）
   bool _showDiscoverDetail = false; // 是否显示歌单详情覆盖层
   int? _discoverPlaylistId; // 当前展示的歌单ID
+  bool _showDailyDetail = false; // 是否显示每日推荐覆盖层
+  List<Map<String, dynamic>> _dailyTracks = const [];
 
   @override
   bool get wantKeepAlive => true; // 保持页面状态
@@ -596,6 +599,12 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                               _showDiscoverDetail = true;
                             });
                           },
+                          onOpenDailyDetail: (tracks) {
+                            setState(() {
+                              _dailyTracks = tracks;
+                              _showDailyDetail = true;
+                            });
+                          },
                         ),
                       ] else ...[
                         if (MusicService().isLoading)
@@ -674,6 +683,24 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                         ),
                       ),
                     ],
+                  ),
+                ),
+              ),
+            ),
+
+          // 每日推荐覆盖层（覆盖标题与 Tabs）
+          if (_showDailyDetail)
+            Positioned.fill(
+              child: Material(
+                color: Theme.of(context).colorScheme.surface,
+                child: SafeArea(
+                  child: DailyRecommendDetailPage(
+                    tracks: _dailyTracks,
+                    embedded: true,
+                    onClose: () => setState(() {
+                      _showDailyDetail = false;
+                      _dailyTracks = const [];
+                    }),
                   ),
                 ),
               ),

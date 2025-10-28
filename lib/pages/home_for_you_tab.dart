@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/netease_recommend_service.dart';
 import '../models/track.dart';
@@ -6,12 +7,15 @@ import '../services/player_service.dart';
 import '../services/playlist_queue_service.dart';
 import 'daily_recommend_detail_page.dart';
 import 'discover_playlist_detail_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/auth_service.dart';
 
 /// 首页 - 为你推荐 Tab 内容
 class HomeForYouTab extends StatefulWidget {
-  const HomeForYouTab({super.key, this.onOpenPlaylistDetail});
+  const HomeForYouTab({super.key, this.onOpenPlaylistDetail, this.onOpenDailyDetail});
 
   final void Function(int playlistId)? onOpenPlaylistDetail;
+  final void Function(List<Map<String, dynamic>> tracks)? onOpenDailyDetail;
 
   @override
   State<HomeForYouTab> createState() => _HomeForYouTabState();
@@ -19,7 +23,6 @@ class HomeForYouTab extends StatefulWidget {
 
 class _HomeForYouTabState extends State<HomeForYouTab> {
   late Future<_ForYouData> _future;
-  bool _showDailyDetail = false;
   
   @override
   void initState() {
@@ -28,6 +31,26 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
   }
 
   Future<_ForYouData> _load() async {
+    // 1) 先尝试读取当日缓存
+    final prefs = await SharedPreferences.getInstance();
+    final cacheBase = _cacheBaseKey();
+    final dataKey = '${cacheBase}_data';
+    final expireKey = '${cacheBase}_expire';
+    final now = DateTime.now();
+    final expireMs = prefs.getInt(expireKey);
+    if (expireMs != null && now.millisecondsSinceEpoch < expireMs) {
+      final jsonString = prefs.getString(dataKey);
+      if (jsonString != null && jsonString.isNotEmpty) {
+        try {
+          final data = _ForYouData.fromJsonString(jsonString);
+          return data;
+        } catch (_) {
+          // 解析失败，继续走网络请求
+        }
+      }
+    }
+
+    // 2) 拉取网络数据
     final svc = NeteaseRecommendService();
     final dailySongs = await svc.fetchDailySongs();
     final fm = await svc.fetchPersonalFm();
@@ -35,7 +58,7 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
     final personalized = await svc.fetchPersonalizedPlaylists(limit: 12);
     final radar = await svc.fetchRadarPlaylists();
     final newsongs = await svc.fetchPersonalizedNewsongs(limit: 10);
-    return _ForYouData(
+    final result = _ForYouData(
       dailySongs: dailySongs,
       fm: fm,
       dailyPlaylists: dailyPlaylists,
@@ -43,6 +66,20 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
       radarPlaylists: radar,
       personalizedNewsongs: newsongs,
     );
+
+    // 3) 写入当日缓存（有效期至当日 23:59:59）
+    try {
+      final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+      await prefs.setString(dataKey, result.toJsonString());
+      await prefs.setInt(expireKey, endOfDay.millisecondsSinceEpoch);
+    } catch (_) {}
+
+    return result;
+  }
+
+  String _cacheBaseKey() {
+    final userId = AuthService().currentUser?.id?.toString() ?? 'guest';
+    return 'home_for_you_$userId';
   }
 
   @override
@@ -60,22 +97,13 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
         final data = snapshot.data!;
         return Stack(
           children: [
-            RefreshIndicator(
-              onRefresh: () async {
-                setState(() {
-                  _future = _load();
-                });
-                await _future;
-              },
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-              child: Column(
+            Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const _GreetingHeader(),
                   _DailyRecommendCard(
                     tracks: data.dailySongs,
-                    onOpenDetail: () => setState(() => _showDailyDetail = true),
+                  onOpenDetail: () => widget.onOpenDailyDetail?.call(data.dailySongs),
                   ),
                   const SizedBox(height: 24),
                   _SectionTitle(title: '私人FM'),
@@ -103,21 +131,8 @@ class _HomeForYouTabState extends State<HomeForYouTab> {
                   _NewsongList(list: data.personalizedNewsongs),
                   const SizedBox(height: 16),
                 ],
-              ),
-            ),
             ),
 
-            if (_showDailyDetail)
-              Positioned.fill(
-                child: Material(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: DailyRecommendDetailPage(
-                    tracks: data.dailySongs,
-                    embedded: true,
-                    onClose: () => setState(() => _showDailyDetail = false),
-                  ),
-                ),
-              ),
           ],
         );
       },
@@ -140,6 +155,33 @@ class _ForYouData {
     required this.radarPlaylists,
     required this.personalizedNewsongs,
   });
+
+  Map<String, dynamic> toJson() => {
+        'dailySongs': dailySongs,
+        'fm': fm,
+        'dailyPlaylists': dailyPlaylists,
+        'personalizedPlaylists': personalizedPlaylists,
+        'radarPlaylists': radarPlaylists,
+        'personalizedNewsongs': personalizedNewsongs,
+      };
+
+  String toJsonString() => jsonEncode(toJson());
+
+  static _ForYouData fromJson(Map<String, dynamic> json) {
+    return _ForYouData(
+      dailySongs: (json['dailySongs'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+      fm: (json['fm'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+      dailyPlaylists: (json['dailyPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+      personalizedPlaylists: (json['personalizedPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+      radarPlaylists: (json['radarPlaylists'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+      personalizedNewsongs: (json['personalizedNewsongs'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>(),
+    );
+  }
+
+  static _ForYouData fromJsonString(String s) {
+    final map = jsonDecode(s) as Map<String, dynamic>;
+    return fromJson(map);
+  }
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -248,19 +290,115 @@ class _DailyRecommendCard extends StatelessWidget {
             );
           }
         },
-        child: Container(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bool isNarrow = constraints.maxWidth < 480;
+            final EdgeInsets contentPadding = const EdgeInsets.all(16);
+            if (isNarrow) {
+              // 移动端：横向布局，左侧方形封面网格，右侧信息与按钮
+              final double gridSize = (constraints.maxWidth * 0.38).clamp(120.0, 180.0);
+              return Padding(
+                padding: contentPadding,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: gridSize,
+                      height: gridSize,
+                      child: _buildCoverGrid(context, coverImages),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '每日推荐',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: cs.primary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '${tracks.length} 首歌曲',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: cs.onSurface.withOpacity(0.65),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(Icons.auto_awesome, size: 18, color: cs.primary),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  '根据你的音乐品味每日更新',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurface.withOpacity(0.7),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 140),
+                              child: FilledButton.icon(
+                                onPressed: () {
+                                  if (onOpenDetail != null) {
+                                    onOpenDetail!();
+                                  } else {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) => DailyRecommendDetailPage(tracks: tracks),
+                                      ),
+                                    );
+                                  }
+                                },
+                                icon: const Icon(Icons.chevron_right, size: 20),
+                                label: const Text('查看全部'),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            // 宽屏：保持横向布局和固定高度
+            return Container(
           height: 200,
-          padding: const EdgeInsets.all(20),
+              padding: contentPadding.add(const EdgeInsets.all(4)),
           child: Row(
             children: [
-              // 左侧：封面网格（2x2）
               SizedBox(
                 width: 160,
                 height: 160,
                 child: _buildCoverGrid(context, coverImages),
               ),
               const SizedBox(width: 24),
-              // 右侧：信息
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -348,6 +486,8 @@ class _DailyRecommendCard extends StatelessWidget {
               ),
             ],
           ),
+            );
+          },
         ),
       ),
     );
@@ -363,7 +503,9 @@ class _DailyRecommendCard extends StatelessWidget {
     }
     
     return GridView.builder(
+      padding: EdgeInsets.zero,
       physics: const NeverScrollableScrollPhysics(),
+      shrinkWrap: true,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         crossAxisSpacing: 4,

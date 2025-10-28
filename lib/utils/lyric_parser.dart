@@ -16,7 +16,12 @@ class LyricParser {
       for (final line in translationLines) {
         final time = LyricLine.parseTime(line);
         if (time != null) {
-          final text = line.replaceAll(RegExp(r'\[\d+:\d+\.\d+\]'), '').trim();
+          // 去除时间戳，兼容 [mm:ss.xx] / [mm:ss.xxx] / [mm:ss:SS]
+          final text = line
+              .replaceAll(RegExp(r'\[\d+:\d+\.\d+\]'), '')
+              .replaceAll(RegExp(r'\[\d+:\d+:\d+\]'), '')
+              .replaceAll(RegExp(r'\[\d+:\d+\]'), '')
+              .trim();
           if (text.isNotEmpty) {
             translationMap[time] = text;
           }
@@ -28,7 +33,12 @@ class LyricParser {
     for (final line in lyricLines) {
       final time = LyricLine.parseTime(line);
       if (time != null) {
-        final text = line.replaceAll(RegExp(r'\[\d+:\d+\.\d+\]'), '').trim();
+        // 去除时间戳，兼容多种格式
+        final text = line
+            .replaceAll(RegExp(r'\[\d+:\d+\.\d+\]'), '')
+            .replaceAll(RegExp(r'\[\d+:\d+:\d+\]'), '')
+            .replaceAll(RegExp(r'\[\d+:\d+\]'), '')
+            .trim();
         if (text.isNotEmpty) {
           lines.add(LyricLine(
             startTime: time,
