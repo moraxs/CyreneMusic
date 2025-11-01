@@ -309,9 +309,19 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(result['message'])),
         );
-        // 登录成功后加载数据
-        await AdminService().fetchUsers();
-        await AdminService().fetchStats();
+        
+        // 登录成功后延迟加载数据，避免token时序问题
+        Future.delayed(const Duration(milliseconds: 500), () async {
+          if (AdminService().isAuthenticated) {
+            try {
+              await AdminService().fetchUsers();
+              await AdminService().fetchStats();
+            } catch (e) {
+              print('❌ [DeveloperPage] 数据加载失败: $e');
+              // 不自动登出，让用户手动重试
+            }
+          }
+        });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -349,8 +359,19 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
                         onPressed: AdminService().isLoading
                             ? null
                             : () async {
-                                await AdminService().fetchUsers();
-                                await AdminService().fetchStats();
+                                try {
+                                  await AdminService().fetchUsers();
+                                  await AdminService().fetchStats();
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('刷新失败: ${e.toString()}'),
+                                        backgroundColor: Theme.of(context).colorScheme.error,
+                                      ),
+                                    );
+                                  }
+                                }
                               },
                       ),
                       const Spacer(),
@@ -403,6 +424,51 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
   Widget _buildUsersTab() {
     if (AdminService().isLoading && AdminService().users.isEmpty) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    // 检查是否有错误信息
+    if (AdminService().errorMessage != null && 
+        AdminService().errorMessage!.contains('令牌验证失败')) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '数据加载失败',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              AdminService().errorMessage!,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: () async {
+                await AdminService().fetchUsers();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('重试'),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () {
+                AdminService().logout();
+              },
+              child: const Text('重新登录'),
+            ),
+          ],
+        ),
+      );
     }
 
     if (AdminService().users.isEmpty) {
@@ -469,6 +535,51 @@ class _DeveloperPageState extends State<DeveloperPage> with SingleTickerProvider
   Widget _buildStatsTab() {
     if (AdminService().isLoading && AdminService().stats == null) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    // 检查是否有错误信息
+    if (AdminService().errorMessage != null && 
+        AdminService().errorMessage!.contains('令牌验证失败')) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '统计数据加载失败',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              AdminService().errorMessage!,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: () async {
+                await AdminService().fetchStats();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('重试'),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () {
+                AdminService().logout();
+              },
+              child: const Text('重新登录'),
+            ),
+          ],
+        ),
+      );
     }
 
     final stats = AdminService().stats;

@@ -17,6 +17,7 @@ import 'services/persistent_storage_service.dart';
 import 'services/listening_stats_service.dart';
 import 'services/desktop_lyric_service.dart';
 import 'services/android_floating_lyric_service.dart';
+import 'services/auto_update_service.dart';
 
 
 // 条件导入 flutter_displaymode（仅 Android）
@@ -80,6 +81,10 @@ void main() async {
   // 初始化版本检查服务
   await VersionService().initialize();
   DeveloperModeService().addLog('📱 版本服务已初始化');
+
+  // 初始化自动更新服务
+  await AutoUpdateService().initialize();
+  DeveloperModeService().addLog('🔄 自动更新服务已初始化');
   
   // 初始化缓存服务
   await CacheService().initialize();

@@ -1,10 +1,53 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../services/url_service.dart';
 
 /// 网络设置组件
-class NetworkSettings extends StatelessWidget {
+class NetworkSettings extends StatefulWidget {
   const NetworkSettings({super.key});
+
+  @override
+  State<NetworkSettings> createState() => _NetworkSettingsState();
+}
+
+class _NetworkSettingsState extends State<NetworkSettings> {
+  bool _isTesting = false;
+  int? _latencyMs;
+  String? _errorMessage;
+  Timer? _autoRefreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    UrlService().addListener(_handleUrlChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _testConnection();
+      _startAutoRefresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    UrlService().removeListener(_handleUrlChanged);
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleUrlChanged() {
+    if (!mounted) return;
+    setState(() {});
+    _testConnection();
+    _startAutoRefresh();
+  }
+
+  void _startAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _testConnection();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,9 +69,12 @@ class NetworkSettings extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.wifi_tethering),
                 title: const Text('测试连接'),
-                subtitle: const Text('测试与后端服务器的连接'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _testConnection(context),
+                subtitle: Text(
+                  _errorMessage != null
+                      ? '无法连接后端服务器'
+                      : '自动检测与后端服务器的连接',
+                ),
+                trailing: _buildLatencyIndicator(context),
               ),
             ],
           ),
@@ -187,137 +233,102 @@ class NetworkSettings extends StatelessWidget {
     );
   }
 
-  Future<void> _testConnection(BuildContext context) async {
-    // 显示加载对话框
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
+  Widget _buildLatencyIndicator(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
 
-    final baseUrl = UrlService().baseUrl;
-    bool isSuccess = false;
-    String errorMessage = '';
-
-    try {
-      final response = await http.get(
-        Uri.parse(baseUrl),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('连接超时');
-        },
+    if (_isTesting) {
+      return const SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
       );
-
-      if (response.statusCode == 200 && response.body.trim() == 'OK') {
-        isSuccess = true;
-      } else {
-        errorMessage = '响应码: ${response.statusCode}\n响应内容: ${response.body}';
-      }
-    } catch (e) {
-      errorMessage = e.toString();
     }
 
-    if (!context.mounted) return;
-    
-    // 关闭加载对话框
-    Navigator.pop(context);
+    if (_latencyMs != null) {
+      final latency = _latencyMs!.clamp(0, 9999);
+      Color displayColor;
+      if (latency <= 100) {
+        displayColor = Colors.green;
+      } else if (latency <= 300) {
+        displayColor = Colors.orange;
+      } else {
+        displayColor = colorScheme.error;
+      }
 
-    // 显示结果对话框
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(
-              isSuccess ? Icons.check_circle : Icons.error,
-              color: isSuccess
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(width: 8),
-            const Text('连接测试'),
-          ],
+      return Text(
+        '${latency} ms',
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: displayColor,
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              UrlService().isUsingOfficialSource
-                  ? '官方源'
-                  : '后端地址: $baseUrl',
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isSuccess
-                    ? Theme.of(context).colorScheme.primaryContainer
-                    : Theme.of(context).colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    isSuccess ? Icons.done : Icons.close,
-                    color: isSuccess
-                        ? Theme.of(context).colorScheme.onPrimaryContainer
-                        : Theme.of(context).colorScheme.onErrorContainer,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      isSuccess ? '连接成功' : '连接失败',
-                      style: TextStyle(
-                        color: isSuccess
-                            ? Theme.of(context).colorScheme.onPrimaryContainer
-                            : Theme.of(context).colorScheme.onErrorContainer,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (!isSuccess) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '错误详情:',
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      errorMessage,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('确定'),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Tooltip(
+        message: _errorMessage!,
+        child: Text(
+          '失联',
+          style: TextStyle(
+            color: colorScheme.error,
+            fontWeight: FontWeight.bold,
           ),
-        ],
+        ),
+      );
+    }
+
+    return Text(
+      '--',
+      style: TextStyle(
+        color: colorScheme.outline,
+        fontWeight: FontWeight.bold,
       ),
     );
+  }
+
+  Future<void> _testConnection() async {
+    if (_isTesting) return;
+
+    final baseUrl = UrlService().baseUrl;
+    if (baseUrl.isEmpty) {
+      setState(() {
+        _latencyMs = null;
+        _errorMessage = '未设置后端地址';
+      });
+      return;
+    }
+
+    setState(() {
+      _isTesting = true;
+      _errorMessage = null;
+    });
+
+    final stopwatch = Stopwatch()..start();
+    try {
+      final uri = Uri.parse('$baseUrl/info');
+      await http
+          .get(uri)
+          .timeout(const Duration(seconds: 10));
+
+      stopwatch.stop();
+      if (!mounted) return;
+
+      setState(() {
+        _latencyMs = stopwatch.elapsedMilliseconds == 0
+            ? 1
+            : stopwatch.elapsedMilliseconds;
+        _isTesting = false;
+        _errorMessage = null;
+      });
+    } catch (e) {
+      stopwatch.stop();
+      if (!mounted) return;
+      setState(() {
+        _isTesting = false;
+        _latencyMs = null;
+        _errorMessage = e.toString();
+      });
+    }
   }
 }
 

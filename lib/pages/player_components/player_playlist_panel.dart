@@ -181,7 +181,8 @@ class PlayerPlaylistPanel extends StatelessWidget {
           : Colors.transparent,
       child: InkWell(
         onTap: () {
-          PlayerService().playTrack(track);
+          final coverProvider = PlaylistQueueService().getCoverProvider(track);
+          PlayerService().playTrack(track, coverProvider: coverProvider);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('正在播放: ${track.name}'),
@@ -217,9 +218,15 @@ class PlayerPlaylistPanel extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
                 child: CachedNetworkImage(
                   imageUrl: track.picUrl,
-                  width: 50,
-                  height: 50,
-                  fit: BoxFit.cover,
+                  imageBuilder: (context, imageProvider) {
+                    PlaylistQueueService().updateCoverProvider(track, imageProvider);
+                    return Image(
+                      image: imageProvider,
+                      width: 50,
+                      height: 50,
+                      fit: BoxFit.cover,
+                    );
+                  },
                   placeholder: (context, url) => Container(
                     width: 50,
                     height: 50,

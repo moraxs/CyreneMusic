@@ -1,14 +1,54 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../services/version_service.dart';
+
 import '../../models/version_info.dart';
+import '../../services/auto_update_service.dart';
+import '../../services/url_service.dart';
+import '../../services/version_service.dart';
 
 /// 关于设置组件
-class AboutSettings extends StatelessWidget {
+class AboutSettings extends StatefulWidget {
   const AboutSettings({super.key});
 
   @override
+  State<AboutSettings> createState() => _AboutSettingsState();
+}
+
+class _AboutSettingsState extends State<AboutSettings> {
+  final VersionService _versionService = VersionService();
+  final AutoUpdateService _autoUpdateService = AutoUpdateService();
+
+  @override
+  void initState() {
+    super.initState();
+    _versionService.addListener(_onServiceChanged);
+    _autoUpdateService.addListener(_onServiceChanged);
+  }
+
+  @override
+  void dispose() {
+    _versionService.removeListener(_onServiceChanged);
+    _autoUpdateService.removeListener(_onServiceChanged);
+    super.dispose();
+  }
+
+  void _onServiceChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final latestVersion = _versionService.latestVersion;
+    final hasUpdate = _versionService.hasUpdate;
+    final autoSupported = _autoUpdateService.isPlatformSupported;
+    final showStatus = _autoUpdateService.isUpdating ||
+        _autoUpdateService.requiresRestart ||
+        _autoUpdateService.lastError != null ||
+        (_autoUpdateService.statusMessage.isNotEmpty &&
+            _autoUpdateService.statusMessage != '未开始');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -19,7 +59,7 @@ class AboutSettings extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.info_outline),
                 title: const Text('版本信息'),
-                subtitle: Text('v${VersionService().currentVersion}'),
+                subtitle: Text('v${_versionService.currentVersion}'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _showAboutDialog(context),
               ),
@@ -31,6 +71,113 @@ class AboutSettings extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _checkForUpdate(context),
               ),
+              const Divider(height: 1),
+              SwitchListTile.adaptive(
+                secondary: const Icon(Icons.autorenew),
+                value: autoSupported && _autoUpdateService.isEnabled,
+                title: const Text('自动更新'),
+                subtitle: Text(
+                  autoSupported
+                      ? '开启后检测到新版本将自动下载并安装'
+                      : '当前平台暂不支持自动更新（仅 Windows 和 Android）',
+                ),
+                onChanged: autoSupported
+                    ? (value) => _toggleAutoUpdate(context, value)
+                    : null,
+              ),
+              if (autoSupported) const Divider(height: 1),
+              if (autoSupported)
+                ListTile(
+                  leading: const Icon(Icons.flash_on_outlined),
+                  title: const Text('一键更新'),
+                  subtitle: Text(
+                    hasUpdate && latestVersion != null
+                        ? '发现新版本 ${latestVersion.version}，点击立即更新'
+                        : '需先检查更新，若有新版本可快速安装',
+                  ),
+                  trailing: FilledButton.icon(
+                    onPressed: () => _triggerQuickUpdate(context),
+                    icon: const Icon(Icons.system_update_alt),
+                    label: const Text('开始更新'),
+                  ),
+                  onTap: () => _triggerQuickUpdate(context),
+                ),
+              if (showStatus)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            _autoUpdateService.lastError != null
+                                ? Icons.error_outline
+                                : _autoUpdateService.requiresRestart
+                                    ? Icons.restart_alt
+                                    : Icons.info_outline,
+                            color: _autoUpdateService.lastError != null
+                                ? Theme.of(context).colorScheme.error
+                                : Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _autoUpdateService.statusMessage,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    color: _autoUpdateService.lastError != null
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .error
+                                        : null,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_autoUpdateService.isUpdating) ...[
+                        const SizedBox(height: 12),
+                        LinearProgressIndicator(
+                          value: _autoUpdateService.progress > 0 &&
+                                  _autoUpdateService.progress < 1
+                              ? _autoUpdateService.progress
+                              : null,
+                        ),
+                      ],
+                      if (_autoUpdateService.requiresRestart) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          '更新已完成，请退出并重新启动应用以应用最新版本。',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                      if (_autoUpdateService.lastSuccessAt != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '最后更新: ${_formatDateTime(_autoUpdateService.lastSuccessAt!)}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                      if (_autoUpdateService.lastError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '错误详情: ${_autoUpdateService.lastError}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: Theme.of(context).colorScheme.error),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -44,9 +191,9 @@ class AboutSettings extends StatelessWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.primary,
-        ),
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.primary,
+            ),
       ),
     );
   }
@@ -55,7 +202,7 @@ class AboutSettings extends StatelessWidget {
     showAboutDialog(
       context: context,
       applicationName: 'Cyrene Music',
-      applicationVersion: VersionService().currentVersion,
+      applicationVersion: _versionService.currentVersion,
       applicationIcon: const Icon(Icons.music_note, size: 48),
       children: const [
         Text('一个跨平台的音乐与视频聚合播放器'),
@@ -66,52 +213,41 @@ class AboutSettings extends StatelessWidget {
   }
 
   Future<void> _checkForUpdate(BuildContext context) async {
-    // 显示加载对话框
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
+      builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
     try {
-      print('🔍 [AboutSettings] 开始检查更新...');
-      
-      final versionInfo = await VersionService().checkForUpdate(silent: false);
-      
-      if (!context.mounted) return;
-      
-      // 关闭加载对话框
-      Navigator.pop(context);
-      
-      if (versionInfo != null && VersionService().hasUpdate) {
-        print('✅ [AboutSettings] 发现新版本: ${versionInfo.version}');
+      final versionInfo = await _versionService.checkForUpdate(silent: false);
+
+      if (!mounted) return;
+
+      Navigator.of(context).pop();
+
+      if (versionInfo != null && _versionService.hasUpdate) {
         _showUpdateDialog(context, versionInfo);
       } else {
-        print('✅ [AboutSettings] 已是最新版本');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Row(
-              children: [
+              children: const [
                 Icon(Icons.check_circle, color: Colors.white),
                 SizedBox(width: 12),
-                Text('已是最新版本'),
+                Expanded(child: Text('当前已是最新版本')),
               ],
             ),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
     } catch (e) {
-      print('❌ [AboutSettings] 检查更新失败: $e');
-      
-      if (!context.mounted) return;
-      
-      // 关闭加载对话框
-      Navigator.pop(context);
-      
+      if (!mounted) return;
+
+      Navigator.of(context).pop();
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -128,10 +264,72 @@ class AboutSettings extends StatelessWidget {
     }
   }
 
-  void _showUpdateDialog(BuildContext context, VersionInfo versionInfo) {
-    if (!context.mounted) return;
+  Future<void> _toggleAutoUpdate(BuildContext context, bool value) async {
+    await _autoUpdateService.setEnabled(value);
+    if (!mounted) return;
 
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(value ? '已开启自动更新' : '已关闭自动更新'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _triggerQuickUpdate(BuildContext context) async {
+    VersionInfo? versionInfo = _versionService.latestVersion;
+
+    if (versionInfo == null || !_versionService.hasUpdate) {
+      versionInfo = await _versionService.checkForUpdate(silent: false);
+      if (!mounted) return;
+
+      if (versionInfo == null || !_versionService.hasUpdate) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(child: Text('当前已是最新版本')),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+    }
+
+    if (!_autoUpdateService.isPlatformSupported) {
+      await _openDownloadLink(context, versionInfo.downloadUrl);
+      return;
+    }
+
+    await _autoUpdateService.startUpdate(
+      versionInfo: versionInfo,
+      autoTriggered: false,
+    );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: const [
+            Icon(Icons.system_update_alt, color: Colors.white),
+            SizedBox(width: 12),
+            Expanded(child: Text('已开始下载更新，请稍候查看状态')),
+          ],
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showUpdateDialog(BuildContext context, VersionInfo versionInfo) {
     final isForceUpdate = versionInfo.forceUpdate;
+    final platformSupported = _autoUpdateService.isPlatformSupported;
 
     showDialog(
       context: context,
@@ -151,70 +349,59 @@ class AboutSettings extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 版本信息
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '最新版本',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          Text(
+                            '最新版本',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                versionInfo.version,
-                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            versionInfo.version,
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                   color: Theme.of(context).colorScheme.primary,
                                   fontWeight: FontWeight.bold,
                                 ),
-                              ),
-                            ],
                           ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                '当前版本',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '当前版本',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                VersionService().currentVersion,
-                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _versionService.currentVersion,
+                            style: Theme.of(context).textTheme.titleLarge,
                           ),
                         ],
                       ),
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 20),
-
-                // 更新内容
                 Text(
                   '更新内容',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 12),
                 Container(
@@ -228,8 +415,6 @@ class AboutSettings extends StatelessWidget {
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ),
-
-                // 强制更新提示
                 if (isForceUpdate) ...[
                   const SizedBox(height: 16),
                   Container(
@@ -248,7 +433,7 @@ class AboutSettings extends StatelessWidget {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            '此版本为强制更新\n请立即更新',
+                            '此版本为强制更新\n请尽快完成安装',
                             style: TextStyle(
                               color: Theme.of(context).colorScheme.onErrorContainer,
                               fontWeight: FontWeight.bold,
@@ -263,57 +448,98 @@ class AboutSettings extends StatelessWidget {
             ),
           ),
           actions: [
-            // 稍后提醒按钮（仅非强制更新时显示）
             if (!isForceUpdate)
               TextButton(
                 onPressed: () async {
-                  await VersionService().ignoreCurrentVersion(versionInfo.version);
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('已忽略版本 ${versionInfo.version}，有新版本时将再次提醒'),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  }
+                  await _versionService.ignoreCurrentVersion(versionInfo.version);
+                  if (!mounted) return;
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('已忽略版本 ${versionInfo.version}，后续将不再提示'),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
                 },
                 child: const Text('稍后提醒'),
               ),
-
-            // 立即更新按钮
             FilledButton.icon(
               onPressed: () async {
-                final url = versionInfo.downloadUrl;
-                print('🔗 [AboutSettings] 打开下载链接: $url');
+                Navigator.of(context).pop();
 
-                try {
-                  final uri = Uri.parse(url);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    print('✅ [AboutSettings] 已打开浏览器');
-                  } else {
-                    throw Exception('无法打开链接');
-                  }
-                } catch (e) {
-                  print('❌ [AboutSettings] 打开链接失败: $e');
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('打开链接失败: $e'),
-                        backgroundColor: Colors.red,
+                if (platformSupported) {
+                  await _autoUpdateService.startUpdate(
+                    versionInfo: versionInfo,
+                    autoTriggered: false,
+                  );
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: const [
+                          Icon(Icons.system_update, color: Colors.white),
+                          SizedBox(width: 12),
+                          Expanded(child: Text('正在下载并安装更新，请稍候')), 
+                        ],
                       ),
-                    );
-                  }
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                } else {
+                  await _openDownloadLink(context, versionInfo.downloadUrl);
                 }
               },
               icon: const Icon(Icons.download),
-              label: const Text('立即更新'),
+              label: Text(platformSupported ? '一键更新' : '前往下载'),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _openDownloadLink(BuildContext context, String url) async {
+    final uri = _resolveDownloadUri(url);
+
+    try {
+      if (!await canLaunchUrl(uri)) {
+        throw Exception('无法打开链接');
+      }
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text('打开下载链接失败: $e')),
+            ],
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Uri _resolveDownloadUri(String rawUrl) {
+    final uri = Uri.parse(rawUrl);
+    if (uri.hasScheme) {
+      return uri;
+    }
+
+    final base = UrlService().baseUrl;
+    final cleanedBase = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final formattedPath = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
+    return Uri.parse('$cleanedBase$formattedPath');
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    final local = dateTime.toLocal();
+    final date = '${local.year.toString().padLeft(4, '0')}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+    final time = '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}:${local.second.toString().padLeft(2, '0')}';
+    return '$date $time';
   }
 }
 

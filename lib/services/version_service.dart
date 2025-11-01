@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/version_info.dart';
+import 'auto_update_service.dart';
 import 'url_service.dart';
 import 'developer_mode_service.dart';
 
@@ -188,20 +189,24 @@ class VersionService extends ChangeNotifier {
             if (!silent) {
               DeveloperModeService().addLog('🆕 发现新版本: ${_latestVersion!.version}');
             }
+            AutoUpdateService().onNewVersionDetected(_latestVersion!);
           } else {
             print('✅ [VersionService] 已是最新版本');
             if (!silent) {
               DeveloperModeService().addLog('✅ 已是最新版本');
             }
+            AutoUpdateService().clearPendingVersion();
           }
           
           _isChecking = false;
           notifyListeners();
           return _latestVersion;
         } else {
+          AutoUpdateService().clearPendingVersion();
           throw Exception('响应数据格式错误');
         }
       } else {
+        AutoUpdateService().clearPendingVersion();
         throw Exception('HTTP ${response.statusCode}');
       }
     } catch (e) {
@@ -211,6 +216,7 @@ class VersionService extends ChangeNotifier {
       }
       _isChecking = false;
       notifyListeners();
+      AutoUpdateService().clearPendingVersion();
       return null;
     }
   }

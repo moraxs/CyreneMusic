@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,8 +9,125 @@ import '../services/play_history_service.dart';
 import '../models/track.dart';
 
 /// 迷你播放器组件（底部播放栏）
-class MiniPlayer extends StatelessWidget {
+class MiniPlayer extends StatefulWidget {
   const MiniPlayer({super.key});
+
+  @override
+  State<MiniPlayer> createState() => _MiniPlayerState();
+}
+
+class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateMixin {
+  bool _isCollapsed = false;
+  bool _autoCollapseEnabled = false;
+  Timer? _collapseTimer;
+  String? _lastTrackKey;
+  AnimationController? _breathingController;
+  Animation<double>? _breathingScale;
+  bool _breathingActive = false;
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    _collapseTimer?.cancel();
+    _breathingController?.dispose();
+    super.dispose();
+  }
+
+  void _configureAutoCollapse(bool enable) {
+    if (_autoCollapseEnabled == enable) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _autoCollapseEnabled = enable;
+        if (!_autoCollapseEnabled) {
+          _collapseTimer?.cancel();
+          _isCollapsed = false;
+        } else {
+          _scheduleCollapseTimer();
+        }
+      });
+      if (!enable) {
+        _setBreathingActive(false);
+      }
+    });
+  }
+
+  void _scheduleCollapseTimer() {
+    _collapseTimer?.cancel();
+    if (!_autoCollapseEnabled) return;
+    _collapseTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted || !_autoCollapseEnabled) return;
+      setState(() {
+        _isCollapsed = true;
+      });
+      _setBreathingActive(true);
+    });
+  }
+
+  void _resetCollapseTimer({bool expand = false}) {
+    if (!_autoCollapseEnabled) return;
+    _collapseTimer?.cancel();
+    if (expand && _isCollapsed) {
+      setState(() {
+        _isCollapsed = false;
+      });
+      _setBreathingActive(false);
+    }
+    _scheduleCollapseTimer();
+  }
+
+  void _handlePointerDown() {
+    if (!_autoCollapseEnabled) return;
+    _collapseTimer?.cancel();
+  }
+
+  void _setBreathingActive(bool active) {
+    if (_breathingActive == active) return;
+    _breathingActive = active;
+    if (active) {
+      final controller = _breathingController ??= AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 2800),
+      );
+      _breathingScale ??= Tween<double>(begin: 0.94, end: 1.06).animate(
+        CurvedAnimation(parent: controller, curve: Curves.easeInOut),
+      );
+      controller
+        ..reset()
+        ..repeat(reverse: true);
+    } else {
+      _breathingController?.stop();
+      _breathingController?.reset();
+    }
+  }
+
+  void _handleTrackChange(String? trackKey) {
+    if (_lastTrackKey == trackKey) return;
+    _lastTrackKey = trackKey;
+    if (!_autoCollapseEnabled) {
+      if (_isCollapsed) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() => _isCollapsed = false);
+          }
+        });
+        _setBreathingActive(false);
+      }
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _isCollapsed = false;
+      });
+      _setBreathingActive(false);
+      _scheduleCollapseTimer();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,241 +138,311 @@ class MiniPlayer extends StatelessWidget {
         final track = player.currentTrack;
         final song = player.currentSong;
 
-        // 如果没有正在播放的歌曲，不显示
-        if (track == null && song == null) {
+        final mediaQuery = MediaQuery.of(context);
+        final bool isCompactWidth = mediaQuery.size.width < 600;
+        final bool isPortrait = mediaQuery.orientation == Orientation.portrait;
+        final bool hasContent = track != null || song != null;
+
+        _configureAutoCollapse(hasContent && isCompactWidth && isPortrait);
+
+        final String? trackKey;
+        if (track != null) {
+          final sourceName = track.source.name;
+          trackKey = 'track_${track.id}_$sourceName';
+        } else if (song != null) {
+          trackKey = 'song_${song.id}_${song.source.name}';
+        } else {
+          trackKey = null;
+        }
+        _handleTrackChange(trackKey);
+
+        if (!hasContent) {
           return const SizedBox.shrink();
         }
 
         final colorScheme = Theme.of(context).colorScheme;
-        // 用播放器主题色作为液体玻璃的轻微色彩倾向
         final Color? themeTint = PlayerService().themeColorNotifier.value;
-        final isCompactWidth = MediaQuery.of(context).size.width < 600;
+        final bool showCollapsed = _autoCollapseEnabled && _isCollapsed;
 
-        return GestureDetector(
-          excludeFromSemantics: true,
-          onTap: () {
-            // 点击打开全屏播放器（从底部滑出）
-            Navigator.of(context).push(
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => const PlayerPage(),
-                transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                  // 从底部向上滑出
-                  const begin = Offset(0.0, 1.0);  // 从底部开始
-                  const end = Offset.zero;          // 到达正常位置
-                  const curve = Curves.easeOutCubic;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _setBreathingActive(showCollapsed);
+        });
 
-                  var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-                  var offsetAnimation = animation.drive(tween);
+        final expanded = _buildExpandedPlayer(
+          context: context,
+          player: player,
+          song: song,
+          track: track,
+          colorScheme: colorScheme,
+          themeTint: themeTint,
+          isCompactWidth: isCompactWidth,
+        );
 
-                  return SlideTransition(
-                    position: offsetAnimation,
-                    child: child,
-                  );
-                },
-                transitionDuration: const Duration(milliseconds: 300),
-                reverseTransitionDuration: const Duration(milliseconds: 250),
+        final collapsed = _buildCollapsedPlayer(
+          context: context,
+          song: song,
+          track: track,
+          colorScheme: colorScheme,
+          isCompactWidth: isCompactWidth,
+          isActive: showCollapsed,
+        );
+
+        return Listener(
+          onPointerDown: (_) => _handlePointerDown(),
+          onPointerUp: (_) => _resetCollapseTimer(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTap: () {
+              if (showCollapsed) {
+                _resetCollapseTimer(expand: true);
+                return;
+              }
+              _resetCollapseTimer();
+              _openFullPlayer(context);
+            },
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOutCubic,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: showCollapsed ? collapsed : expanded,
               ),
-            );
-          },
-          child: Container(
-            height: 90,
-            margin: isCompactWidth ? const EdgeInsets.fromLTRB(12, 8, 12, 8) : EdgeInsets.zero,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: isCompactWidth ? Colors.transparent : colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(isCompactWidth ? 28 : 0),
-              border: isCompactWidth ? Border.all(color: Colors.white.withOpacity(0.18), width: 1) : null,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.10),
-                  blurRadius: 12,
-                  offset: const Offset(0, 2),
-                ),
-              ],
             ),
-            child: isCompactWidth
-                ? Stack(
-                    children: [
-                      // 毛玻璃模糊层（使用 ClipRect 包裹 BackdropFilter 更稳健）
-                      Positioned.fill(
-                        child: ClipRect(
-                          child: BackdropFilter(
-                            filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                            child: const SizedBox.shrink(),
-                          ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openFullPlayer(BuildContext context) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => const PlayerPage(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(0.0, 1.0);
+          const end = Offset.zero;
+          const curve = Curves.easeOutCubic;
+
+          final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          final offsetAnimation = animation.drive(tween);
+
+          return SlideTransition(
+            position: offsetAnimation,
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+        reverseTransitionDuration: const Duration(milliseconds: 250),
+      ),
+    );
+  }
+
+  Widget _buildExpandedPlayer({
+    required BuildContext context,
+    required PlayerService player,
+    required dynamic song,
+    required dynamic track,
+    required ColorScheme colorScheme,
+    required Color? themeTint,
+    required bool isCompactWidth,
+  }) {
+    return Container(
+      key: const ValueKey('mini_expanded'),
+      height: 90,
+      margin: isCompactWidth ? const EdgeInsets.fromLTRB(12, 8, 12, 8) : EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: isCompactWidth ? Colors.transparent : colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(isCompactWidth ? 28 : 0),
+        border: isCompactWidth ? Border.all(color: Colors.white.withOpacity(0.18), width: 1) : null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.10),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: isCompactWidth
+          ? Stack(
+              children: [
+                Positioned.fill(
+                  child: ClipRect(
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                      child: const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(28),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withOpacity(0.16),
+                          (themeTint ?? colorScheme.primary).withOpacity(0.10),
+                          Colors.white.withOpacity(0.05),
+                        ],
+                        stops: const [0.0, 0.45, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    ignoring: true,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(28),
+                        gradient: RadialGradient(
+                          center: const Alignment(-0.9, -0.9),
+                          radius: 1.2,
+                          colors: [
+                            Colors.white.withOpacity(0.20),
+                            Colors.white.withOpacity(0.04),
+                            Colors.transparent,
+                          ],
+                          stops: const [0.0, 0.45, 1.0],
                         ),
                       ),
-                      // 半透明渐变叠加，营造液体玻璃质感
-                      Positioned.fill(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(28),
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Colors.white.withOpacity(0.16),
-                                (themeTint ?? colorScheme.primary).withOpacity(0.10),
-                                Colors.white.withOpacity(0.05),
-                              ],
-                              stops: const [0.0, 0.45, 1.0],
-                            ),
-                          ),
-                        ),
-                      ),
-                      // 高光（径向）
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          ignoring: true,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(28),
-                              gradient: RadialGradient(
-                                center: const Alignment(-0.9, -0.9),
-                                radius: 1.2,
-                                colors: [
-                                  Colors.white.withOpacity(0.20),
-                                  Colors.white.withOpacity(0.04),
-                                  Colors.transparent,
-                                ],
-                                stops: const [0.0, 0.45, 1.0],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      // 内容
-                      Column(
-                        children: [
-                          _buildProgressBar(player, colorScheme),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final isCompact = constraints.maxWidth < 600;
-                                  final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
-                                  if (isCompact) {
-                                    if (isPortrait) {
-                                      return Row(
+                    ),
+                  ),
+                ),
+                Column(
+                  children: [
+                    _buildProgressBar(player, colorScheme),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final isCompact = constraints.maxWidth < 600;
+                            final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
+                            if (isCompact) {
+                              if (isPortrait) {
+                                return Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 8,
+                                      child: Row(
                                         children: [
-                                          Expanded(
-                                            flex: 8,
-                                            child: Row(
-                                              children: [
-                                                _buildCover(song, track, colorScheme, size: 56),
-                                                const SizedBox(width: 10),
-                                                Expanded(child: _buildSongInfo(song, track, context)),
-                                              ],
-                                            ),
-                                          ),
-                                          Expanded(
-                                            flex: 6,
-                                            child: Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  _buildCenterControls(player, colorScheme, hideSkip: true),
-                                                  IconButton(
-                                                    icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
-                                                    tooltip: '播放列表',
-                                                    onPressed: () => _showQueueSheet(context),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
+                                          _buildCover(song, track, colorScheme, size: 56),
+                                          const SizedBox(width: 10),
+                                          Expanded(child: _buildSongInfo(song, track, context)),
                                         ],
-                                      );
-                                    } else {
-                                      return Row(
-                                        children: [
-                                          Expanded(
-                                            flex: 6,
-                                            child: Row(
-                                              children: [
-                                                _buildCover(song, track, colorScheme, size: 56),
-                                                const SizedBox(width: 10),
-                                                Expanded(child: _buildSongInfo(song, track, context)),
-                                              ],
-                                            ),
-                                          ),
-                                          Expanded(
-                                            flex: 4,
-                                            child: Center(child: _buildCenterControls(player, colorScheme, hideSkip: true)),
-                                          ),
-                                          Expanded(
-                                            flex: 5,
-                                            child: Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Text(
-                                                    _formatDuration(player.position),
-                                                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                                                  ),
-                                                  const Text(' / '),
-                                                  Text(
-                                                    _formatDuration(player.duration),
-                                                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  IconButton(
-                                                    icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
-                                                    tooltip: '播放列表',
-                                                    onPressed: () => _showQueueSheet(context),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      );
-                                    }
-                                  }
-                                  return Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      Align(
-                                        alignment: Alignment.centerLeft,
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 6,
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            _buildCover(song, track, colorScheme, size: 56),
-                                            const SizedBox(width: 12),
-                                            ConstrainedBox(
-                                              constraints: const BoxConstraints(maxWidth: 420),
-                                              child: _buildSongInfo(song, track, context),
+                                            _buildCenterControls(player, colorScheme, hideSkip: true),
+                                            IconButton(
+                                              icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
+                                              tooltip: '播放列表',
+                                              onPressed: () => _showQueueSheet(context),
                                             ),
                                           ],
                                         ),
                                       ),
-                                      Align(
-                                        alignment: Alignment.center,
-                                        child: _buildCenterControls(player, colorScheme),
+                                    ),
+                                  ],
+                                );
+                              } else {
+                                return Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 6,
+                                      child: Row(
+                                        children: [
+                                          _buildCover(song, track, colorScheme, size: 56),
+                                          const SizedBox(width: 10),
+                                          Expanded(child: _buildSongInfo(song, track, context)),
+                                        ],
                                       ),
-                                      Align(
+                                    ),
+                                    Expanded(
+                                      flex: 4,
+                                      child: Center(child: _buildCenterControls(player, colorScheme, hideSkip: true)),
+                                    ),
+                                    Expanded(
+                                      flex: 5,
+                                      child: Align(
                                         alignment: Alignment.centerRight,
-                                        child: _buildRightPanel(player, colorScheme, context),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              _formatDuration(player.position),
+                                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                            ),
+                                            const Text(' / '),
+                                            Text(
+                                              _formatDuration(player.duration),
+                                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            IconButton(
+                                              icon: Icon(Icons.queue_music_rounded, color: colorScheme.onSurface),
+                                              tooltip: '播放列表',
+                                              onPressed: () => _showQueueSheet(context),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+                            }
+                            return Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _buildCover(song, track, colorScheme, size: 56),
+                                      const SizedBox(width: 12),
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(maxWidth: 420),
+                                        child: _buildSongInfo(song, track, context),
                                       ),
                                     ],
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
+                                  ),
+                                ),
+                                Align(
+                                  alignment: Alignment.center,
+                                  child: _buildCenterControls(player, colorScheme),
+                                ),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: _buildRightPanel(player, colorScheme, context),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
                       ),
-                    ],
-                  )
-                : Column(
+                    ),
+                  ],
+                ),
+              ],
+            )
+          : Column(
               children: [
-                // 进度条
                 _buildProgressBar(player, colorScheme),
-                
-                // 播放器控制栏
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -263,12 +451,9 @@ class MiniPlayer extends StatelessWidget {
                         final isCompact = constraints.maxWidth < 600;
                         final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
                         if (isCompact) {
-                          // 移动端：竖屏与横屏布局差异
                           if (isPortrait) {
-                            // 竖屏：不显示时间，控制按钮靠右对齐
                             return Row(
                               children: [
-                                // 左侧：封面 + 歌曲信息
                                 Expanded(
                                   flex: 8,
                                   child: Row(
@@ -279,7 +464,6 @@ class MiniPlayer extends StatelessWidget {
                                     ],
                                   ),
                                 ),
-                                // 右侧：控制按钮 + 列表
                                 Expanded(
                                   flex: 6,
                                   child: Align(
@@ -300,10 +484,8 @@ class MiniPlayer extends StatelessWidget {
                               ],
                             );
                           } else {
-                            // 横屏：显示时间，控制按钮居中
                             return Row(
                               children: [
-                                // 左侧：封面 + 歌曲信息
                                 Expanded(
                                   flex: 6,
                                   child: Row(
@@ -314,12 +496,10 @@ class MiniPlayer extends StatelessWidget {
                                     ],
                                   ),
                                 ),
-                                // 中间：控制按钮
                                 Expanded(
                                   flex: 4,
                                   child: Center(child: _buildCenterControls(player, colorScheme, hideSkip: true)),
                                 ),
-                                // 右侧：时长 + 列表（隐藏音量以节省空间）
                                 Expanded(
                                   flex: 5,
                                   child: Align(
@@ -327,7 +507,6 @@ class MiniPlayer extends StatelessWidget {
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        // 时长
                                         Text(
                                           _formatDuration(player.position),
                                           style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
@@ -351,33 +530,32 @@ class MiniPlayer extends StatelessWidget {
                             );
                           }
                         }
-                        // 桌面端：维持原三段对齐布局
                         return Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                                  _buildCover(song, track, colorScheme, size: 56),
-                              const SizedBox(width: 12),
-                              ConstrainedBox(
-                                    constraints: const BoxConstraints(maxWidth: 420),
-                                child: _buildSongInfo(song, track, context),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Align(
                           alignment: Alignment.center,
-                          child: _buildCenterControls(player, colorScheme),
-                        ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: _buildRightPanel(player, colorScheme, context),
-                        ),
-                      ],
+                          children: [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _buildCover(song, track, colorScheme, size: 56),
+                                  const SizedBox(width: 12),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 420),
+                                    child: _buildSongInfo(song, track, context),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Align(
+                              alignment: Alignment.center,
+                              child: _buildCenterControls(player, colorScheme),
+                            ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: _buildRightPanel(player, colorScheme, context),
+                            ),
+                          ],
                         );
                       },
                     ),
@@ -385,9 +563,82 @@ class MiniPlayer extends StatelessWidget {
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _buildCollapsedPlayer({
+    required BuildContext context,
+    required dynamic song,
+    required dynamic track,
+    required ColorScheme colorScheme,
+    required bool isCompactWidth,
+    required bool isActive,
+  }) {
+    final margin = isCompactWidth ? const EdgeInsets.fromLTRB(12, 8, 12, 8) : EdgeInsets.zero;
+    final cover = _buildCover(song, track, colorScheme, size: 64);
+
+    if (!isActive) {
+      return Container(
+        key: const ValueKey('mini_collapsed'),
+        margin: margin,
+        alignment: Alignment.bottomLeft,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.12),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        );
-      },
+          child: cover,
+        ),
+      );
+    }
+
+    return Container(
+      key: const ValueKey('mini_collapsed'),
+      margin: margin,
+      alignment: Alignment.bottomLeft,
+      child: AnimatedBuilder(
+        animation: _breathingController ?? kAlwaysCompleteAnimation,
+        child: cover,
+        builder: (context, child) {
+          final controller = _breathingController;
+          final scaleAnim = _breathingScale;
+          final t = controller?.value ?? 1.0;
+          final scale = scaleAnim?.value ?? 1.0;
+          final glowColor = colorScheme.primary.withOpacity(ui.lerpDouble(0.35, 0.6, t) ?? 0.45);
+          final blur = ui.lerpDouble(18, 32, t) ?? 24;
+          final spread = ui.lerpDouble(3, 10, t) ?? 6;
+
+          return Transform.scale(
+            scale: scale,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: glowColor,
+                    blurRadius: blur,
+                    spreadRadius: spread,
+                  ),
+                ],
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: colorScheme.primary.withOpacity(ui.lerpDouble(0.25, 0.4, t) ?? 0.3)),
+                  color: colorScheme.surface,
+                ),
+                child: child,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -664,9 +915,15 @@ class MiniPlayer extends StatelessWidget {
                         borderRadius: BorderRadius.circular(4),
                         child: CachedNetworkImage(
                           imageUrl: t.picUrl,
-                          width: 44,
-                          height: 44,
-                          fit: BoxFit.cover,
+                          imageBuilder: (context, imageProvider) {
+                            PlaylistQueueService().updateCoverProvider(t, imageProvider);
+                            return Image(
+                              image: imageProvider,
+                              width: 44,
+                              height: 44,
+                              fit: BoxFit.cover,
+                            );
+                          },
                           placeholder: (context, url) => Container(width: 44, height: 44, color: Colors.black12),
                           errorWidget: (context, url, error) => Container(
                             width: 44,
@@ -679,7 +936,8 @@ class MiniPlayer extends StatelessWidget {
                       title: Text(t.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text(t.artists, maxLines: 1, overflow: TextOverflow.ellipsis),
                       onTap: () {
-                        PlayerService().playTrack(t);
+                        final coverProvider = PlaylistQueueService().getCoverProvider(t);
+                        PlayerService().playTrack(t, coverProvider: coverProvider);
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('正在播放: ${t.name}'), duration: const Duration(seconds: 1)),

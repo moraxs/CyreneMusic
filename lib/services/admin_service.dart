@@ -275,7 +275,7 @@ class AdminService extends ChangeNotifier {
 
     print('👑 [AdminService] 获取用户列表...');
     _isLoading = true;
-    _errorMessage = null;
+    _errorMessage = null; // 清除之前的错误信息
     notifyListeners();
 
     try {
@@ -291,9 +291,8 @@ class AdminService extends ChangeNotifier {
       print('📥 [AdminService] 状态码: ${response.statusCode}');
 
       if (response.statusCode == 401) {
-        // 令牌无效，清除登录状态
-        await logout();
-        _errorMessage = '登录已过期，请重新登录';
+        // 令牌无效，但不立即登出，给用户一个重试机会
+        _errorMessage = '令牌验证失败，请重新登录或重试';
         _isLoading = false;
         notifyListeners();
         return false;
@@ -334,7 +333,7 @@ class AdminService extends ChangeNotifier {
 
     print('👑 [AdminService] 获取统计数据...');
     _isLoading = true;
-    _errorMessage = null;
+    _errorMessage = null; // 清除之前的错误信息
     notifyListeners();
 
     try {
@@ -350,8 +349,8 @@ class AdminService extends ChangeNotifier {
       print('📥 [AdminService] 状态码: ${response.statusCode}');
 
       if (response.statusCode == 401) {
-        await logout();
-        _errorMessage = '登录已过期，请重新登录';
+        // 令牌无效，但不立即登出，给用户一个重试机会
+        _errorMessage = '令牌验证失败，请重新登录或重试';
         _isLoading = false;
         notifyListeners();
         return false;

@@ -26,6 +26,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../services/url_service.dart';
 import '../services/netease_login_service.dart';
+import '../services/auto_update_service.dart';
 import 'home_for_you_tab.dart';
 import 'discover_playlist_detail_page.dart';
 import 'daily_recommend_detail_page.dart';
@@ -286,6 +287,31 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
       
       // 如果有更新，检查是否应该提示
       if (versionInfo != null && VersionService().hasUpdate) {
+        final autoUpdateService = AutoUpdateService();
+        final isAutoHandled = autoUpdateService.isEnabled &&
+            autoUpdateService.isPlatformSupported &&
+            !versionInfo.forceUpdate;
+
+        if (isAutoHandled) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.system_update_alt, color: Colors.white),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text('检测到新版本，已在后台自动更新'),
+                    ),
+                  ],
+                ),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+
         // 检查用户是否已忽略此版本
         final shouldShow = await VersionService().shouldShowUpdateDialog(versionInfo);
         

@@ -56,6 +56,7 @@ class PlayerService extends ChangeNotifier {
   final ValueNotifier<Color?> themeColorNotifier = ValueNotifier<Color?>(null); // 主题色通知器
   double _volume = 1.0; // 当前音量 (0.0 - 1.0)
   ImageProvider? _currentCoverImageProvider; // 当前歌曲的预取封面图像提供器（避免二次请求）
+  String? _currentCoverUrl; // 当前封面图对应的原始 URL（用于去重）
   
   // 听歌统计相关
   async_lib.Timer? _statsTimer; // 统计定时器
@@ -79,9 +80,26 @@ class PlayerService extends ChangeNotifier {
   ImageProvider? get currentCoverImageProvider => _currentCoverImageProvider;
 
   /// 设置当前歌曲的预取封面图像提供器
-  void setCurrentCoverImageProvider(ImageProvider? provider) {
+  void setCurrentCoverImageProvider(
+    ImageProvider? provider, {
+    bool shouldNotify = false,
+    String? imageUrl,
+  }) {
     _currentCoverImageProvider = provider;
-    // 不触发 notifyListeners 以避免无谓 rebuild，由 PlayerSongInfo/MiniPlayer 读取时刷新
+
+    if (provider is CachedNetworkImageProvider) {
+      _currentCoverUrl = imageUrl ?? provider.url;
+    } else {
+      _currentCoverUrl = imageUrl;
+    }
+
+    if (provider == null) {
+      _currentCoverUrl = null;
+    }
+
+    if (shouldNotify) {
+      notifyListeners();
+    }
   }
 
   /// 初始化播放器监听
@@ -160,18 +178,32 @@ class PlayerService extends ChangeNotifier {
   }
 
   /// 播放歌曲（通过Track对象）
-  Future<void> playTrack(Track track, {AudioQuality? quality}) async {
+  Future<void> playTrack(
+    Track track, {
+    AudioQuality? quality,
+    ImageProvider? coverProvider,
+  }) async {
     try {
       // 使用用户设置的音质，如果没有传入特定音质
       final selectedQuality = quality ?? AudioQualityService().currentQuality;
       print('🎵 [PlayerService] 播放音质: ${selectedQuality.toString()}');
       
+      if (coverProvider != null) {
+        setCurrentCoverImageProvider(
+          coverProvider,
+          shouldNotify: false,
+          imageUrl: track.picUrl,
+        );
+      }
+
       // 清理上一首歌的临时文件
       await _cleanupCurrentTempFile();
       
       _state = PlayerState.loading;
       _currentTrack = track;
+      _currentSong = null;
       _errorMessage = null;
+      await _updateCoverImage(track.picUrl, notify: false);
       notifyListeners();
 
       print('🎵 [PlayerService] 开始播放: ${track.name} - ${track.artists}');
@@ -184,7 +216,7 @@ class PlayerService extends ChangeNotifier {
       await ListeningStatsService().recordPlayCount(track);
 
       // 1. 检查缓存
-      final qualityStr = quality.toString().split('.').last;
+      final qualityStr = selectedQuality.toString().split('.').last;
       final isCached = CacheService().isCached(track);
 
       if (isCached) {
@@ -212,6 +244,8 @@ class PlayerService extends ChangeNotifier {
             source: track.source,
           );
           
+          await _updateCoverImage(metadata.picUrl, notify: false);
+
           // 🔧 立即通知监听器，确保 PlayerPage 能获取到包含歌词的 currentSong
           notifyListeners();
           print('✅ [PlayerService] 已更新 currentSong（从缓存，包含歌词）');
@@ -234,12 +268,6 @@ class PlayerService extends ChangeNotifier {
 
       // 如果是本地文件，直接走本地播放
       if (track.source == MusicSource.local) {
-        await _cleanupCurrentTempFile();
-        _state = PlayerState.loading;
-        _currentTrack = track;
-        _errorMessage = null;
-        notifyListeners();
-
         final filePath = track.id is String ? track.id as String : '';
         if (filePath.isEmpty || !(await File(filePath).exists())) {
           _state = PlayerState.error;
@@ -264,6 +292,8 @@ class PlayerService extends ChangeNotifier {
           tlyric: '',
           source: MusicSource.local,
         );
+
+        await _updateCoverImage(track.picUrl, notify: false);
 
         notifyListeners();
         _loadLyricsForFloatingDisplay();
@@ -303,6 +333,8 @@ class PlayerService extends ChangeNotifier {
 
       _currentSong = songDetail;
       
+      await _updateCoverImage(songDetail.pic, notify: false);
+
       // 🔧 修复：立即通知监听器，让 PlayerPage 能获取到包含歌词的 currentSong
       notifyListeners();
       print('✅ [PlayerService] 已更新 currentSong 并通知监听器（包含歌词）');
@@ -406,6 +438,34 @@ class PlayerService extends ChangeNotifier {
     } catch (e) {
       print('⚠️ [PlayerService] 缓存失败: $e');
       // 缓存失败不影响播放
+    }
+  }
+
+  /// 更新封面 Provider，统一管理封面缓存与刷新
+  Future<void> _updateCoverImage(String? imageUrl, {bool notify = true}) async {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      if (_currentCoverImageProvider != null) {
+        setCurrentCoverImageProvider(null, shouldNotify: notify);
+      }
+      return;
+    }
+
+    if (_currentCoverUrl == imageUrl && _currentCoverImageProvider != null) {
+      return;
+    }
+
+    try {
+      final provider = CachedNetworkImageProvider(imageUrl);
+      // 预热缓存，避免迷你播放器和全屏播放器重复请求
+      provider.resolve(const ImageConfiguration());
+      setCurrentCoverImageProvider(
+        provider,
+        shouldNotify: notify,
+        imageUrl: imageUrl,
+      );
+    } catch (e) {
+      print('⚠️ [PlayerService] 预加载封面失败: $e');
+      setCurrentCoverImageProvider(null, shouldNotify: notify);
     }
   }
 
@@ -596,6 +656,8 @@ class PlayerService extends ChangeNotifier {
       _currentTrack = null;
       _position = Duration.zero;
       _duration = Duration.zero;
+      setCurrentCoverImageProvider(null, shouldNotify: false);
+      setCurrentCoverImageProvider(null, shouldNotify: false);
       notifyListeners();
       print('⏹️ [PlayerService] 停止播放');
     } catch (e) {
@@ -742,6 +804,7 @@ class PlayerService extends ChangeNotifier {
       _currentTrack = null;
       _position = Duration.zero;
       _duration = Duration.zero;
+      setCurrentCoverImageProvider(null, shouldNotify: false);
       
       // 使用 unawaited 方式，不等待完成，直接继续
       // 因为应用即将退出，操作系统会自动清理资源
@@ -772,7 +835,10 @@ class PlayerService extends ChangeNotifier {
           if (_currentTrack != null) {
             print('🔂 [PlayerService] 单曲循环，重新播放当前歌曲');
             await Future.delayed(const Duration(milliseconds: 500));
-            await playTrack(_currentTrack!);
+            await playTrack(
+              _currentTrack!,
+              coverProvider: _currentCoverImageProvider,
+            );
           }
           break;
           
@@ -813,7 +879,8 @@ class PlayerService extends ChangeNotifier {
         if (nextTrack != null) {
           print('✅ [PlayerService] 从播放队列获取下一首: ${nextTrack.name}');
           await Future.delayed(const Duration(milliseconds: 500));
-          await playTrack(nextTrack);
+          final coverProvider = PlaylistQueueService().getCoverProvider(nextTrack);
+          await playTrack(nextTrack, coverProvider: coverProvider);
           return;
         } else {
           print('ℹ️ [PlayerService] 队列已播放完毕，清空队列');
@@ -827,7 +894,8 @@ class PlayerService extends ChangeNotifier {
       if (nextTrack != null) {
         print('✅ [PlayerService] 从播放历史获取下一首: ${nextTrack.name}');
         await Future.delayed(const Duration(milliseconds: 500));
-        await playTrack(nextTrack);
+        final coverProvider = PlaylistQueueService().getCoverProvider(nextTrack);
+        await playTrack(nextTrack, coverProvider: coverProvider);
       } else {
         print('ℹ️ [PlayerService] 没有更多歌曲可播放');
       }
@@ -846,7 +914,8 @@ class PlayerService extends ChangeNotifier {
         final previousTrack = PlaylistQueueService().getPrevious();
         if (previousTrack != null) {
           print('✅ [PlayerService] 从播放队列获取上一首: ${previousTrack.name}');
-          await playTrack(previousTrack);
+          final coverProvider = PlaylistQueueService().getCoverProvider(previousTrack);
+          await playTrack(previousTrack, coverProvider: coverProvider);
           return;
         }
       }
@@ -858,7 +927,8 @@ class PlayerService extends ChangeNotifier {
       if (history.length >= 3) {
         final previousTrack = history[2].toTrack();
         print('✅ [PlayerService] 从播放历史获取上一首: ${previousTrack.name}');
-        await playTrack(previousTrack);
+        final coverProvider = PlaylistQueueService().getCoverProvider(previousTrack);
+        await playTrack(previousTrack, coverProvider: coverProvider);
       } else {
         print('ℹ️ [PlayerService] 没有上一首可播放');
       }
@@ -878,7 +948,8 @@ class PlayerService extends ChangeNotifier {
         if (randomTrack != null) {
           print('✅ [PlayerService] 从播放队列随机选择: ${randomTrack.name}');
           await Future.delayed(const Duration(milliseconds: 500));
-          await playTrack(randomTrack);
+          final coverProvider = PlaylistQueueService().getCoverProvider(randomTrack);
+          await playTrack(randomTrack, coverProvider: coverProvider);
           return;
         }
       }
@@ -894,7 +965,8 @@ class PlayerService extends ChangeNotifier {
         
         print('✅ [PlayerService] 从播放历史随机选择: ${randomTrack.name}');
         await Future.delayed(const Duration(milliseconds: 500));
-        await playTrack(randomTrack);
+        final coverProvider = PlaylistQueueService().getCoverProvider(randomTrack);
+        await playTrack(randomTrack, coverProvider: coverProvider);
       } else {
         print('ℹ️ [PlayerService] 历史记录不足，无法随机播放');
       }

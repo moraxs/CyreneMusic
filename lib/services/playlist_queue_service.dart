@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ImageProvider;
 import '../models/track.dart';
 
 /// 播放队列来源
@@ -20,17 +21,44 @@ class PlaylistQueueService extends ChangeNotifier {
   List<Track> _queue = [];
   int _currentIndex = -1;
   QueueSource _source = QueueSource.none;
+  final Map<String, ImageProvider> _coverProviders = {};
 
   List<Track> get queue => _queue;
   int get currentIndex => _currentIndex;
+  String _coverKey(Track track) => '${track.source.name}_${track.id}';
+
+  ImageProvider? getCoverProvider(Track track) {
+    return _coverProviders[_coverKey(track)] ??
+        (track.picUrl.isNotEmpty ? _coverProviders[track.picUrl] : null);
+  }
+
+  void updateCoverProvider(Track track, ImageProvider provider) {
+    _coverProviders[_coverKey(track)] = provider;
+    if (track.picUrl.isNotEmpty) {
+      _coverProviders[track.picUrl] = provider;
+    }
+  }
+
+  void updateCoverProviders(Map<String, ImageProvider> providers) {
+    _coverProviders.addAll(providers);
+  }
+
   QueueSource get source => _source;
   bool get hasQueue => _queue.isNotEmpty;
 
   /// 设置播放队列
-  void setQueue(List<Track> tracks, int startIndex, QueueSource source) {
+  void setQueue(
+    List<Track> tracks,
+    int startIndex,
+    QueueSource source, {
+    Map<String, ImageProvider>? coverProviders,
+  }) {
     _queue = List.from(tracks);
     _currentIndex = startIndex;
     _source = source;
+    _coverProviders
+      ..clear()
+      ..addAll(coverProviders ?? {});
     
     print('🎵 [PlaylistQueueService] 设置播放队列: ${_queue.length} 首歌曲, 来源: ${source.name}, 当前索引: $startIndex');
     notifyListeners();
@@ -111,6 +139,7 @@ class PlaylistQueueService extends ChangeNotifier {
     _queue.clear();
     _currentIndex = -1;
     _source = QueueSource.none;
+    _coverProviders.clear();
     print('🗑️ [PlaylistQueueService] 清空播放队列');
     notifyListeners();
   }

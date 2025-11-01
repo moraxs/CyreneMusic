@@ -11,6 +11,7 @@ class TrackListTile extends StatefulWidget {
   final int? index;
   final VoidCallback? onTap;
   final bool showIndex;
+  final void Function(ImageProvider provider)? onCoverReady;
 
   const TrackListTile({
     super.key,
@@ -18,6 +19,7 @@ class TrackListTile extends StatefulWidget {
     this.index,
     this.onTap,
     this.showIndex = true, // 默认显示索引
+    this.onCoverReady,
   });
 
   @override
@@ -25,6 +27,16 @@ class TrackListTile extends StatefulWidget {
 }
 
 class _TrackListTileState extends State<TrackListTile> {
+  bool _reportedCover = false;
+
+  @override
+  void didUpdateWidget(covariant TrackListTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.track.id != widget.track.id || oldWidget.track.picUrl != widget.track.picUrl) {
+      _reportedCover = false;
+    }
+  }
+
   /// 检查登录状态，如果未登录则跳转到登录页面
   /// 返回 true 表示已登录或登录成功，返回 false 表示未登录或取消登录
   Future<bool> _checkLoginStatus() async {
@@ -98,9 +110,18 @@ class _TrackListTileState extends State<TrackListTile> {
             borderRadius: BorderRadius.circular(6),
             child: CachedNetworkImage(
               imageUrl: widget.track.picUrl,
-              width: 50,
-              height: 50,
-              fit: BoxFit.cover,
+              imageBuilder: (context, imageProvider) {
+                if (!_reportedCover) {
+                  widget.onCoverReady?.call(imageProvider);
+                  _reportedCover = true;
+                }
+                return Image(
+                  image: imageProvider,
+                  width: 50,
+                  height: 50,
+                  fit: BoxFit.cover,
+                );
+              },
               placeholder: (context, url) => Container(
                 width: 50,
                 height: 50,
@@ -163,12 +184,11 @@ class _TrackListTileState extends State<TrackListTile> {
         final isLoggedIn = await _checkLoginStatus();
         if (isLoggedIn && mounted) {
           // 预取封面 Provider，供播放器复用，避免再次请求
+          ImageProvider? provider;
           if (widget.track.picUrl.isNotEmpty) {
-            final provider = CachedNetworkImageProvider(widget.track.picUrl);
-            PlayerService().setCurrentCoverImageProvider(provider);
+            provider = CachedNetworkImageProvider(widget.track.picUrl);
           }
-          // 播放歌曲
-          PlayerService().playTrack(widget.track);
+          PlayerService().playTrack(widget.track, coverProvider: provider);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('正在加载：${widget.track.name}'),

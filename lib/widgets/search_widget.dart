@@ -578,11 +578,12 @@ class _SearchWidgetState extends State<SearchWidget> {
 
     final bestTrack = mergedTrack.getBestTrack();
     // 播放前注入封面 Provider，避免播放器再次请求
+    ImageProvider? provider;
     if (bestTrack.picUrl.isNotEmpty) {
-      final provider = CachedNetworkImageProvider(bestTrack.picUrl);
+      provider = CachedNetworkImageProvider(bestTrack.picUrl);
       PlayerService().setCurrentCoverImageProvider(provider);
     }
-    PlayerService().playTrack(bestTrack);
+    PlayerService().playTrack(bestTrack, coverProvider: provider);
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -632,8 +633,10 @@ class _SearchWidgetState extends State<SearchWidget> {
                   if (track.picUrl.isNotEmpty) {
                     final provider = CachedNetworkImageProvider(track.picUrl);
                     PlayerService().setCurrentCoverImageProvider(provider);
+                    PlayerService().playTrack(track, coverProvider: provider);
+                  } else {
+                    PlayerService().playTrack(track);
                   }
-                  PlayerService().playTrack(track);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('正在播放: ${track.name}'),

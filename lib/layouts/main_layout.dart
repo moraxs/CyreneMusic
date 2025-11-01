@@ -396,20 +396,6 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         ],
       ),
       bottomNavigationBar: _buildGlassBottomNavigationBar(context),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: AnimatedBuilder(
-        animation: PlayerService(),
-        builder: (context, child) {
-          final hasMiniPlayer = PlayerService().currentTrack != null || PlayerService().currentSong != null;
-          return Padding(
-            padding: EdgeInsets.only(bottom: hasMiniPlayer ? 120.0 : 0.0),
-            child: FloatingActionButton(
-              onPressed: _handleUserButtonTap,
-              child: _buildUserAvatar(),
-            ),
-          );
-        },
-      ),
     );
   }
 

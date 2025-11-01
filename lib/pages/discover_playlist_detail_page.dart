@@ -40,6 +40,9 @@ class _DiscoverPlaylistDetailContentState extends State<DiscoverPlaylistDetailCo
   bool _loading = true;
   String? _error;
   final ScrollController _scrollController = ScrollController();
+  final Map<String, ImageProvider> _coverProviderCache = {};
+
+  String _coverKey(Track track) => '${track.source.name}_${track.id}';
 
   @override
   void initState() {
@@ -62,6 +65,7 @@ class _DiscoverPlaylistDetailContentState extends State<DiscoverPlaylistDetailCo
       _loading = true;
       _error = null;
     });
+    _coverProviderCache.clear();
     final detail = await NeteaseDiscoverService().fetchPlaylistDetail(widget.playlistId);
     if (!mounted) return;
     setState(() {
@@ -159,13 +163,24 @@ class _DiscoverPlaylistDetailContentState extends State<DiscoverPlaylistDetailCo
               return TrackListTile(
                 track: track,
                 index: index,
+                onCoverReady: (provider) {
+                  final key = _coverKey(track);
+                  _coverProviderCache[key] = provider;
+                  PlaylistQueueService().updateCoverProvider(track, provider);
+                },
                 onTap: () async {
                   final ok = await _checkLoginStatus();
                   if (!ok) return;
                   // 替换播放队列为当前歌单
-                  PlaylistQueueService().setQueue(allTracks, index, QueueSource.playlist);
+                  PlaylistQueueService().setQueue(
+                    allTracks,
+                    index,
+                    QueueSource.playlist,
+                    coverProviders: _coverProviderCache,
+                  );
                   // 播放所点歌曲
-                  await PlayerService().playTrack(track);
+                  final coverProvider = _coverProviderCache[_coverKey(track)];
+                  await PlayerService().playTrack(track, coverProvider: coverProvider);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
