@@ -25,6 +25,7 @@ import 'package:cyrene_music/services/system_media_service.dart';
 import 'package:cyrene_music/services/tray_service.dart';
 import 'package:cyrene_music/services/url_service.dart';
 import 'package:cyrene_music/services/version_service.dart';
+import 'package:cyrene_music/services/singleton_service.dart';
 import 'package:cyrene_music/utils/theme_manager.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:media_kit/media_kit.dart';
@@ -36,6 +37,18 @@ import 'package:flutter_displaymode/flutter_displaymode.dart' if (dart.library.h
 void main() async {
   // 初始化播放器服务
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 添加应用启动日志
+  DeveloperModeService().addLog('🚀 应用启动');
+  DeveloperModeService().addLog('📱 平台: ${Platform.operatingSystem}');
+  
+  // 🔒 确保只有一个进程运行
+  final isSingleton = await SingletonService().initialize();
+  if (!isSingleton) {
+    DeveloperModeService().addLog('⚠️ 已有进程在运行，当前进程将退出');
+    print('⚠️ [Singleton] 已有进程在运行，当前进程将退出');
+    exit(0);
+  }
   
   // iOS 平台：设置首选竖屏方向（解决初次启动横屏问题）
   if (Platform.isIOS) {
@@ -51,10 +64,6 @@ void main() async {
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
     MediaKit.ensureInitialized();
   }
-  
-  // 添加应用启动日志
-  DeveloperModeService().addLog('🚀 应用启动');
-  DeveloperModeService().addLog('📱 平台: ${Platform.operatingSystem}');
   
   // 🔧 初始化持久化存储服务（必须最先初始化，其他服务依赖它）
   await PersistentStorageService().initialize();
