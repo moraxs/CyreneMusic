@@ -40,6 +40,7 @@ dependencies:
   
   # HTTP requests
   http: ^1.2.0
+  liquid_glass_widgets: ^0.7.13
   
   # Audio player
   audioplayers: ^6.0.0
