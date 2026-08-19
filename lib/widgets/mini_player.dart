@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
@@ -380,6 +381,110 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     );
   }
 
+  /// Cupertino 液态玻璃迷你播放器的内容区域
+  Widget _buildCupertinoMiniContent(
+    PlayerService player,
+    dynamic song,
+    dynamic track,
+    ColorScheme colorScheme,
+    BuildContext context,
+  ) {
+    final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
+    if (isPortrait) {
+      return Row(
+        children: [
+          Expanded(
+            flex: 8,
+            child: Row(
+              children: [
+                _buildCover(song, track, colorScheme, size: 56),
+                const SizedBox(width: 10),
+                Expanded(child: _buildSongInfo(song, track, context)),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 6,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildCenterControlsCupertino(player, context, hideSkip: true),
+                  CupertinoButton(
+                    padding: const EdgeInsets.all(8),
+                    minSize: 0,
+                    onPressed: () => _showQueueSheet(context),
+                    child: Icon(
+                      CupertinoIcons.music_note_list,
+                      color: CupertinoColors.activeBlue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+    // 横屏布局
+    return Row(
+      children: [
+        Expanded(
+          flex: 6,
+          child: Row(
+            children: [
+              _buildCover(song, track, colorScheme, size: 56),
+              const SizedBox(width: 10),
+              Expanded(child: _buildSongInfo(song, track, context)),
+            ],
+          ),
+        ),
+        Expanded(
+          flex: 4,
+          child: Center(
+            child: _buildCenterControlsCupertino(player, context, hideSkip: true),
+          ),
+        ),
+        Expanded(
+          flex: 5,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ValueListenableBuilder<Duration>(
+                  valueListenable: player.positionNotifier,
+                  builder: (context, position, child) {
+                    return Text(
+                      _formatDuration(position),
+                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                    );
+                  },
+                ),
+                const Text(' / '),
+                Text(
+                  _formatDuration(player.duration),
+                  style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(width: 8),
+                CupertinoButton(
+                  padding: const EdgeInsets.all(8),
+                  minSize: 0,
+                  onPressed: () => _showQueueSheet(context),
+                  child: Icon(
+                    CupertinoIcons.music_note_list,
+                    color: CupertinoColors.activeBlue,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildExpandedPlayer({
     required BuildContext context,
     required PlayerService player,
@@ -392,6 +497,44 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
     final bool isFluent = ThemeManager().isFluentFramework;
     final bool effectEnabled = ThemeManager().windowEffect.name != 'disabled';
     final fluentBg = isFluent ? fluent.FluentTheme.of(context).micaBackgroundColor : null;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Cupertino 主题 + 移动端窄屏：使用 GlassContainer 液态玻璃效果
+    if (_isCupertino && isCompactWidth) {
+      return GlassContainer(
+        key: const ValueKey('mini_expanded'),
+        height: 90,
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        shape: const LiquidRoundedSuperellipse(borderRadius: 28),
+        useOwnLayer: true,
+        quality: GlassQuality.standard, // 迷你播放器可能随滚动移动，用 standard 更安全
+        settings: LiquidGlassSettings(
+          thickness: isDark ? 35 : 20,
+          blur: isDark ? 4 : 3,
+          chromaticAberration: 0.3,
+          refractiveIndex: 1.5,
+          saturation: isDark ? 0.7 : 0.5,
+          lightIntensity: isDark ? 0.6 : 0.4,
+          ambientStrength: 1.0,
+          specularSharpness: GlassSpecularSharpness.medium,
+          glassColor: isDark
+              ? const Color(0x3DFFFFFF)
+              : const Color(0x1AFFFFFF),
+        ),
+        child: Column(
+          children: [
+            _buildProgressBar(player, colorScheme),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: _buildCupertinoMiniContent(player, song, track, colorScheme, context),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final Color bgColor = isCompactWidth
         ? Colors.transparent
         : (isFluent

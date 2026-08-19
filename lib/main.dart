@@ -6,6 +6,7 @@ import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import 'package:window_manager/window_manager.dart';
 import 'package:cyrene_music/layouts/fluent_main_layout.dart';
@@ -86,6 +87,25 @@ Future<void> main() async {
     await timed('WidgetsFlutterBinding.ensureInitialized', () {
       WidgetsFlutterBinding.ensureInitialized();
     });
+
+    // 桌面端：诊断显示器刷新率
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      try {
+        const channel = MethodChannel('com.cyrene.music/refresh_rate');
+        final rate = await channel.invokeMethod<double>('getMonitorRefreshRate');
+        if (rate != null && rate > 60) {
+          log('  显示器刷新率: ${rate.toStringAsFixed(0)}Hz');
+          log('  提示: 当前 SDK 版本不支持 targetPlatformFramerate，使用 RefreshRateBooster + DWM 优化');
+        }
+      } catch (e) {
+        log('⚠️ 获取显示器刷新率失败: $e');
+      }
+    }
+
+    await timed('LiquidGlassWidgets.initialize', () async {
+      await LiquidGlassWidgets.initialize();
+    });
+    log('✅ Liquid Glass 渲染管线已初始化');
   
     await timed('Platform check & initial logs', () {
       log(' 应用启动');
@@ -320,7 +340,7 @@ Future<void> main() async {
     });
 
     await timed('runApp(MyApp)', () {
-      runApp(const MyApp());
+      runApp(LiquidGlassWidgets.wrap(const MyApp()));
     });
   
 

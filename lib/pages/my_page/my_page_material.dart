@@ -246,25 +246,66 @@ extension MyPageMaterialUI on _MyPageState {
       return const SizedBox.shrink();
     }
 
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _buildExpressiveStatTile(
-            icon: Icons.access_time_filled,
-            label: '聆听时长',
-            value: ListeningStatsService.formatDuration(_statsData!.totalListeningTime),
-            color: colorScheme.primary,
-            onSurface: colorScheme.onPrimary,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: _buildExpressiveStatTile(
+                icon: Icons.access_time_filled,
+                label: '聆听时长',
+                value: ListeningStatsService.formatDuration(_statsData!.totalListeningTime),
+                color: colorScheme.primary,
+                onSurface: colorScheme.onPrimary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildExpressiveStatTile(
+                icon: Icons.play_circle_filled,
+                label: '播放次数',
+                value: '${_statsData!.totalPlayCount}',
+                color: colorScheme.tertiary,
+                onSurface: colorScheme.onTertiary,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildExpressiveStatTile(
-            icon: Icons.play_circle_filled,
-            label: '播放次数',
-            value: '${_statsData!.totalPlayCount}',
-            color: colorScheme.tertiary,
-            onSurface: colorScheme.onTertiary,
+        const SizedBox(height: 12),
+        // 听歌日历入口
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ListeningCalendarPage()),
+              );
+            },
+            borderRadius: BorderRadius.circular(28),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              decoration: BoxDecoration(
+                color: colorScheme.secondaryContainer.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: colorScheme.secondary.withOpacity(0.1)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_month_rounded, size: 24, color: colorScheme.secondary),
+                  const SizedBox(width: 12),
+                  Text(
+                    '听歌日历',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.secondary,
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(Icons.chevron_right_rounded, size: 24, color: colorScheme.secondary.withOpacity(0.5)),
+                ],
+              ),
+            ),
           ),
         ),
       ],

@@ -146,6 +146,32 @@ extension MyPageCupertinoUI on _MyPageState {
               Expanded(child: _buildCupertinoStatTile(icon: CupertinoIcons.play_fill, label: '播放次数', value: '${_statsData!.totalPlayCount} 次', isDark: isDark)),
             ],
           ),
+          const SizedBox(height: 12),
+          // 听歌日历入口
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: () {
+              Navigator.of(context).push(
+                CupertinoPageRoute(builder: (_) => const ListeningCalendarPage()),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey6,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(CupertinoIcons.calendar, size: 20, color: CupertinoColors.systemBlue),
+                  const SizedBox(width: 8),
+                  Text('听歌日历', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: isDark ? CupertinoColors.white : CupertinoColors.black)),
+                  const Spacer(),
+                  Icon(CupertinoIcons.chevron_forward, size: 16, color: CupertinoColors.systemGrey3),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
