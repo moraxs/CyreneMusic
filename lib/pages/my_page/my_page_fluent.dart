@@ -554,6 +554,31 @@ extension MyPageFluentUIComponents on _MyPageState {
               Expanded(child: _buildFluentStatTile(icon: fluent.FluentIcons.play, label: '播放次数', value: '${stats.totalPlayCount} 次')),
             ],
           ),
+          const SizedBox(height: 12),
+          // 听歌日历入口
+          GestureDetector(
+            onTap: () {
+              Navigator.of(context).push(
+                fluent.FluentPageRoute(builder: (_) => const ListeningCalendarPage()),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: fluent.FluentTheme.of(context).resources.controlAltFillColorSecondary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(fluent.FluentIcons.calendar, size: 18),
+                  const SizedBox(width: 8),
+                  const Text('听歌日历', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  const Icon(fluent.FluentIcons.chevron_right, size: 12),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

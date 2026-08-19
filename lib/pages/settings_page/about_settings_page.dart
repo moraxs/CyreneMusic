@@ -54,10 +54,7 @@ class AboutSettingsContent extends StatefulWidget {
           ),
         ),
         // 当前页面：关于（正常颜色）
-        Text(
-          '关于',
-          style: typography.title,
-        ),
+        Text('关于', style: typography.title),
       ],
     );
   }
@@ -106,7 +103,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
     final latestVersion = _versionService.latestVersion;
     final hasUpdate = _versionService.hasUpdate;
     final autoSupported = _autoUpdateService.isPlatformSupported;
-    final showStatus = _autoUpdateService.isUpdating ||
+    final showStatus =
+        _autoUpdateService.isUpdating ||
         _autoUpdateService.requiresRestart ||
         _autoUpdateService.lastError != null ||
         (_autoUpdateService.statusMessage.isNotEmpty &&
@@ -159,16 +157,6 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
               onTap: () => DeveloperModeService().onVersionClicked(),
             ),
             MD3SettingsTile(
-              leading: const Icon(Icons.description_outlined),
-              title: '用户协议',
-              subtitle: '查看用户协议与隐私政策',
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const UserAgreementPage()),
-              ),
-            ),
-            MD3SettingsTile(
               leading: const Icon(Icons.system_update_outlined),
               title: '检查更新',
               subtitle: '查看是否有新版本',
@@ -186,6 +174,18 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
               onChanged: (value) => _toggleAutoUpdate(context, value),
             ),
             MD3SettingsTile(
+              leading: const Icon(Icons.description_outlined),
+              title: '用户协议',
+              subtitle: '查看用户协议与隐私政策',
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const UserAgreementPage(),
+                ),
+              ),
+            ),
+            MD3SettingsTile(
               leading: const Icon(Icons.article_outlined),
               title: '开放源代码许可',
               subtitle: '查看第三方库许可信息',
@@ -194,20 +194,19 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
             ),
             if (showStatus)
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: _autoUpdateService.lastError != null
-                        ? Theme.of(context)
-                            .colorScheme
-                            .errorContainer
-                            .withOpacity(0.5)
-                        : Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest
-                            .withOpacity(0.5),
+                        ? Theme.of(
+                            context,
+                          ).colorScheme.errorContainer.withOpacity(0.5)
+                        : Theme.of(context).colorScheme.surfaceContainerHighest
+                              .withOpacity(0.5),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Column(
@@ -220,8 +219,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                             _autoUpdateService.lastError != null
                                 ? Icons.error_outline
                                 : _autoUpdateService.requiresRestart
-                                    ? Icons.restart_alt
-                                    : Icons.info_outlined,
+                                ? Icons.restart_alt
+                                : Icons.info_outlined,
                             size: 20,
                             color: _autoUpdateService.lastError != null
                                 ? Theme.of(context).colorScheme.error
@@ -231,9 +230,7 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                           Expanded(
                             child: Text(
                               _autoUpdateService.statusMessage,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
+                              style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: _autoUpdateService.lastError != null
                                         ? Theme.of(context).colorScheme.error
@@ -248,7 +245,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: LinearProgressIndicator(
-                            value: _autoUpdateService.progress > 0 &&
+                            value:
+                                _autoUpdateService.progress > 0 &&
                                     _autoUpdateService.progress < 1
                                 ? _autoUpdateService.progress
                                 : null,
@@ -260,34 +258,33 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                         const SizedBox(height: 12),
                         Text(
                           '更新已完成，请退出并重新启动应用以应用最新版本。',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
-                                  ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
                         ),
                       ],
                       if (_autoUpdateService.lastSuccessAt != null) ...[
                         const SizedBox(height: 8),
                         Text(
                           '最后更新: ${_formatDateTime(_autoUpdateService.lastSuccessAt!)}',
-                          style:
-                              Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                       ],
                       if (_autoUpdateService.lastError != null) ...[
                         const SizedBox(height: 8),
                         Text(
                           '错误详情: ${_autoUpdateService.lastError}',
-                          style:
-                              Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.error,
-                                  ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
                         ),
                       ],
                     ],
@@ -305,7 +302,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
     final latestVersion = _versionService.latestVersion;
     final hasUpdate = _versionService.hasUpdate;
     final autoSupported = _autoUpdateService.isPlatformSupported;
-    final showStatus = _autoUpdateService.isUpdating ||
+    final showStatus =
+        _autoUpdateService.isUpdating ||
         _autoUpdateService.requiresRestart ||
         _autoUpdateService.lastError != null ||
         (_autoUpdateService.statusMessage.isNotEmpty &&
@@ -365,18 +363,6 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
           },
         ),
         const SizedBox(height: 1),
-        // 用户协议
-        CupertinoSettingsTile(
-          icon: CupertinoIcons.doc_text,
-          iconColor: CupertinoColors.systemPurple,
-          title: '用户协议',
-          showChevron: true,
-          onTap: () => Navigator.push(
-            context,
-            CupertinoPageRoute(builder: (context) => const UserAgreementPage()),
-          ),
-        ),
-        const SizedBox(height: 1),
         // 检查更新
         CupertinoSettingsTile(
           icon: CupertinoIcons.arrow_down_circle,
@@ -394,12 +380,23 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
           icon: CupertinoIcons.arrow_2_circlepath,
           iconColor: CupertinoColors.systemOrange,
           title: '自动更新',
-          subtitle: autoSupported
-              ? '开启后检测到新版本将自动下载并安装'
-              : '当前平台暂不支持自动更新',
+          subtitle: autoSupported ? '开启后检测到新版本将自动下载并安装' : '当前平台暂不支持自动更新',
           value: autoSupported && _autoUpdateService.isEnabled,
-          onChanged:
-              autoSupported ? (value) => _toggleAutoUpdate(context, value) : null,
+          onChanged: autoSupported
+              ? (value) => _toggleAutoUpdate(context, value)
+              : null,
+        ),
+        const SizedBox(height: 1),
+        // 用户协议
+        CupertinoSettingsTile(
+          icon: CupertinoIcons.doc_text,
+          iconColor: CupertinoColors.systemPurple,
+          title: '用户协议',
+          showChevron: true,
+          onTap: () => Navigator.push(
+            context,
+            CupertinoPageRoute(builder: (context) => const UserAgreementPage()),
+          ),
         ),
         // 更新状态
         if (showStatus) ...[
@@ -430,8 +427,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                 _autoUpdateService.lastError != null
                     ? CupertinoIcons.exclamationmark_circle
                     : _autoUpdateService.requiresRestart
-                        ? CupertinoIcons.arrow_clockwise
-                        : CupertinoIcons.info_circle,
+                    ? CupertinoIcons.arrow_clockwise
+                    : CupertinoIcons.info_circle,
                 color: _autoUpdateService.lastError != null
                     ? CupertinoColors.systemRed
                     : CupertinoColors.systemBlue,
@@ -446,8 +443,8 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                     color: _autoUpdateService.lastError != null
                         ? CupertinoColors.systemRed
                         : (isDark
-                            ? CupertinoColors.white
-                            : CupertinoColors.black),
+                              ? CupertinoColors.white
+                              : CupertinoColors.black),
                   ),
                 ),
               ),
@@ -458,13 +455,15 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: _autoUpdateService.progress > 0 &&
+                value:
+                    _autoUpdateService.progress > 0 &&
                         _autoUpdateService.progress < 1
                     ? _autoUpdateService.progress
                     : null,
                 backgroundColor: CupertinoColors.systemGrey.withOpacity(0.3),
-                valueColor:
-                    const AlwaysStoppedAnimation<Color>(CupertinoColors.systemBlue),
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  CupertinoColors.systemBlue,
+                ),
               ),
             ),
           ],
@@ -699,10 +698,9 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primaryContainer
-                        .withOpacity(0.5),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -713,22 +711,21 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                         children: [
                           Text(
                             '最新版本',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             versionInfo.version,
-                            style:
-                                Theme.of(context).textTheme.titleLarge?.copyWith(
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
                         ],
                       ),
@@ -737,12 +734,12 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                         children: [
                           Text(
                             '当前版本',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
                           ),
                           const SizedBox(height: 4),
                           Text(
@@ -758,14 +755,16 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                 Text(
                   '更新内容',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -793,8 +792,9 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                           child: Text(
                             '此版本为强制更新\n请尽快完成安装',
                             style: TextStyle(
-                              color:
-                                  Theme.of(context).colorScheme.onErrorContainer,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onErrorContainer,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -840,7 +840,9 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
             if (!isForceUpdate)
               TextButton(
                 onPressed: () async {
-                  await _versionService.ignoreCurrentVersion(versionInfo.version);
+                  await _versionService.ignoreCurrentVersion(
+                    versionInfo.version,
+                  );
                   if (!mounted) return;
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -891,7 +893,10 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
     );
   }
 
-  void _showUpdateDialogCupertino(BuildContext context, VersionInfo versionInfo) {
+  void _showUpdateDialogCupertino(
+    BuildContext context,
+    VersionInfo versionInfo,
+  ) {
     final isForceUpdate = versionInfo.forceUpdate;
     final isFixing = versionInfo.fixing;
     final platformSupported = _autoUpdateService.isPlatformSupported;
@@ -911,7 +916,10 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
                 const SizedBox(height: 4),
                 Text('当前版本: ${_versionService.currentVersion}'),
                 const SizedBox(height: 12),
-                const Text('更新内容', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  '更新内容',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 4),
                 Text(versionInfo.changelog),
                 if (isForceUpdate && !isFixing) ...[
@@ -942,7 +950,9 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
               CupertinoDialogAction(
                 isDestructiveAction: false,
                 onPressed: () async {
-                  await _versionService.ignoreCurrentVersion(versionInfo.version);
+                  await _versionService.ignoreCurrentVersion(
+                    versionInfo.version,
+                  );
                   if (!mounted) return;
                   Navigator.of(context).pop();
                 },
@@ -1005,8 +1015,9 @@ class _AboutSettingsContentState extends State<AboutSettingsContent> {
     }
 
     final base = UrlService().baseUrl;
-    final cleanedBase =
-        base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final cleanedBase = base.endsWith('/')
+        ? base.substring(0, base.length - 1)
+        : base;
     final formattedPath = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
     return Uri.parse('$cleanedBase$formattedPath');
   }

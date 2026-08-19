@@ -200,32 +200,55 @@ class ListeningStatsService extends ChangeNotifier {
 
       if (token == null) return;
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/stats/play-count'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'trackId': track.id.toString(),
-          'trackName': track.name,
-          'artists': track.artists,
-          'album': track.album,
-          'picUrl': track.picUrl,
-          'source': track.source.name,
-        }),
-      );
+      final trackData = {
+        'trackId': track.id.toString(),
+        'trackName': track.name,
+        'artists': track.artists,
+        'album': track.album,
+        'picUrl': track.picUrl,
+        'source': track.source.name,
+      };
 
-      if (response.statusCode == 200) {
+      // 同时记录聚合统计和逐条播放历史（并行，互不阻塞）
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      };
+      final body = jsonEncode(trackData);
+
+      final futures = <Future>[
+        http.post(
+          Uri.parse('$baseUrl/stats/play-count'),
+          headers: headers,
+          body: body,
+        ),
+        http.post(
+          Uri.parse('$baseUrl/play-history/record'),
+          headers: headers,
+          body: body,
+        ),
+      ];
+
+      final results = await Future.wait(futures);
+      final statsResponse = results[0] as http.Response;
+      final historyResponse = results[1] as http.Response;
+
+      if (statsResponse.statusCode == 200) {
         print('✅ [ListeningStatsService] 播放次数已记录: ${track.name}');
-      } else if (response.statusCode == 401) {
+      } else if (statsResponse.statusCode == 401) {
         print('⚠️ [ListeningStatsService] 未授权，登录态可能失效');
         await AuthService().handleUnauthorized();
       } else {
-        print('❌ [ListeningStatsService] 记录播放次数失败: ${response.statusCode}');
+        print('❌ [ListeningStatsService] 记录播放次数失败: ${statsResponse.statusCode}');
+      }
+
+      if (historyResponse.statusCode == 200) {
+        print('✅ [ListeningStatsService] 播放历史已记录: ${track.name}');
+      } else {
+        print('❌ [ListeningStatsService] 记录播放历史失败: ${historyResponse.statusCode}');
       }
     } catch (e) {
-      print('❌ [ListeningStatsService] 记录播放次数异常: $e');
+      print('❌ [ListeningStatsService] 记录播放次数/历史异常: $e');
     }
   }
 
@@ -284,6 +307,64 @@ class ListeningStatsService extends ChangeNotifier {
     }
   }
 
+  // ==================== 听歌日历相关 ====================
+
+  /// 获取日历热力图数据
+  Future<CalendarHeatmapData?> fetchCalendarHeatmap(int year, int month) async {
+    if (!AuthService().isLoggedIn) return null;
+
+    try {
+      final baseUrl = UrlService().baseUrl;
+      final token = AuthService().token;
+      if (token == null) return null;
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/play-history/calendar?year=$year&month=$month'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return CalendarHeatmapData.fromJson(data['data']);
+      } else if (response.statusCode == 401) {
+        await AuthService().handleUnauthorized();
+      }
+      return null;
+    } catch (e) {
+      print('❌ [ListeningStatsService] 获取日历热力图异常: $e');
+      return null;
+    }
+  }
+
+  /// 获取某天的播放详情
+  Future<DayDetailData?> fetchDayDetail(DateTime date) async {
+    if (!AuthService().isLoggedIn) return null;
+
+    try {
+      final baseUrl = UrlService().baseUrl;
+      final token = AuthService().token;
+      if (token == null) return null;
+
+      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/play-history/day?date=$dateStr'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return DayDetailData.fromJson(data['data']);
+      } else if (response.statusCode == 401) {
+        await AuthService().handleUnauthorized();
+      }
+      return null;
+    } catch (e) {
+      print('❌ [ListeningStatsService] 获取播放详情异常: $e');
+      return null;
+    }
+  }
+
   /// 在退出前同步数据
   Future<void> syncBeforeExit() async {
     print('🔄 [ListeningStatsService] 退出前同步数据...');
@@ -301,3 +382,119 @@ class ListeningStatsService extends ChangeNotifier {
   }
 }
 
+/// 日历热力图数据
+class CalendarHeatmapData {
+  final int year;
+  final int month;
+  final int totalDays; // 总听歌天数
+  final Map<String, int> heatmap; // date -> count
+
+  CalendarHeatmapData({
+    required this.year,
+    required this.month,
+    required this.totalDays,
+    required this.heatmap,
+  });
+
+  factory CalendarHeatmapData.fromJson(Map<String, dynamic> json) {
+    final heatmapList = json['heatmap'] as List<dynamic>? ?? [];
+    final heatmap = <String, int>{};
+    for (final item in heatmapList) {
+      heatmap[item['date'] as String] = item['count'] as int;
+    }
+    return CalendarHeatmapData(
+      year: json['year'] as int,
+      month: json['month'] as int,
+      totalDays: json['totalDays'] as int? ?? 0,
+      heatmap: heatmap,
+    );
+  }
+}
+
+/// 某天的播放详情数据
+class DayDetailData {
+  final String date;
+  final int count;
+  final List<DayPlayRecord> records;
+
+  DayDetailData({
+    required this.date,
+    required this.count,
+    required this.records,
+  });
+
+  factory DayDetailData.fromJson(Map<String, dynamic> json) {
+    return DayDetailData(
+      date: json['date'] as String,
+      count: json['count'] as int? ?? 0,
+      records: (json['records'] as List<dynamic>?)
+              ?.map((item) => DayPlayRecord.fromJson(item as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+  }
+}
+
+/// 单条播放记录
+class DayPlayRecord {
+  final String trackId;
+  final String trackName;
+  final String artists;
+  final String album;
+  final String picUrl;
+  final String source;
+  final DateTime playedAt;
+
+  DayPlayRecord({
+    required this.trackId,
+    required this.trackName,
+    required this.artists,
+    required this.album,
+    required this.picUrl,
+    required this.source,
+    required this.playedAt,
+  });
+
+  factory DayPlayRecord.fromJson(Map<String, dynamic> json) {
+    return DayPlayRecord(
+      trackId: json['trackId'] as String,
+      trackName: json['trackName'] as String,
+      artists: json['artists'] as String? ?? '',
+      album: json['album'] as String? ?? '',
+      picUrl: json['picUrl'] as String? ?? '',
+      source: json['source'] as String,
+      playedAt: DateTime.parse(json['playedAt'] as String),
+    );
+  }
+
+  /// 转换为 Track 对象
+  Track toTrack() {
+    return Track(
+      id: trackId,
+      name: trackName,
+      artists: artists,
+      album: album,
+      picUrl: picUrl,
+      source: _parseSource(source),
+    );
+  }
+
+  MusicSource _parseSource(String source) {
+    switch (source.toLowerCase()) {
+      case 'netease':
+        return MusicSource.netease;
+      case 'apple':
+        return MusicSource.apple;
+      case 'qq':
+        return MusicSource.qq;
+      case 'kugou':
+        return MusicSource.kugou;
+      case 'kuwo':
+        return MusicSource.kuwo;
+      case 'local':
+        return MusicSource.local;
+      default:
+        return MusicSource.netease;
+    }
+  }
+}

@@ -15,7 +15,7 @@ import '../../widgets/material/material_settings_widgets.dart';
 class NetworkSettings extends StatefulWidget {
   /// 点击音源设置时的回调，用于在设置页面中打开子页面
   final VoidCallback? onAudioSourceTap;
-  
+
   const NetworkSettings({super.key, this.onAudioSourceTap});
 
   @override
@@ -24,7 +24,7 @@ class NetworkSettings extends StatefulWidget {
 
 class _NetworkSettingsState extends State<NetworkSettings> {
   bool _isTesting = false;
-  int? _latencyMs;
+  bool? _isConnected;
   String? _errorMessage;
   Timer? _autoRefreshTimer;
 
@@ -92,9 +92,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           FluentSettingsTile(
             icon: Icons.wifi_tethering,
             title: '测试连接',
-            subtitle: _errorMessage != null
-                ? '无法连接后端服务器'
-                : '自动检测与后端服务器的连接',
+            subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
             trailing: _buildLatencyIndicator(context),
           ),
         ],
@@ -126,9 +124,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
         MD3SettingsTile(
           leading: const Icon(Icons.wifi_tethering_outlined),
           title: '测试连接',
-          subtitle: _errorMessage != null
-              ? '无法连接后端服务器'
-              : '自动检测与后端服务器的连接',
+          subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
           trailing: _buildLatencyIndicator(context),
         ),
       ],
@@ -163,9 +159,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           icon: CupertinoIcons.wifi,
           iconColor: CupertinoColors.systemGreen,
           title: '测试连接',
-          subtitle: _errorMessage != null
-              ? '无法连接后端服务器'
-              : '自动检测与后端服务器的连接',
+          subtitle: _errorMessage != null ? '无法连接后端服务器' : '自动检测与后端服务器的连接',
           trailing: _buildLatencyIndicatorCupertino(context),
         ),
       ],
@@ -178,22 +172,12 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       return const CupertinoActivityIndicator();
     }
 
-    if (_latencyMs != null) {
-      final latency = _latencyMs!.clamp(0, 9999);
-      Color displayColor;
-      if (latency <= 100) {
-        displayColor = CupertinoColors.systemGreen;
-      } else if (latency <= 300) {
-        displayColor = CupertinoColors.systemOrange;
-      } else {
-        displayColor = CupertinoColors.systemRed;
-      }
-
+    if (_isConnected == true) {
       return Text(
-        '${latency} ms',
-        style: TextStyle(
+        'OK',
+        style: const TextStyle(
           fontWeight: FontWeight.bold,
-          color: displayColor,
+          color: CupertinoColors.systemGreen,
         ),
       );
     }
@@ -321,7 +305,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
                     messenger.showSnackBar(
                       const SnackBar(content: Text('已切换到官方源')),
                     );
-                  } 
+                  }
                 },
               ),
               const SizedBox(height: 8),
@@ -376,16 +360,16 @@ class _NetworkSettingsState extends State<NetworkSettings> {
               onChanged: (value) {
                 UrlService().useOfficialSource();
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已切换到官方源')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('已切换到官方源')));
               },
             ),
             RadioListTile<BackendSourceType>(
               title: const Text('自定义源'),
               subtitle: Text(
-                UrlService().customBaseUrl.isNotEmpty 
-                    ? UrlService().customBaseUrl 
+                UrlService().customBaseUrl.isNotEmpty
+                    ? UrlService().customBaseUrl
                     : '点击设置自定义地址',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -410,7 +394,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
 
   void _showCustomUrlDialog(BuildContext context) {
     final controller = TextEditingController(text: UrlService().customBaseUrl);
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -422,7 +406,9 @@ class _NetworkSettingsState extends State<NetworkSettings> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -564,7 +550,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
   /// 显示 Cupertino 风格的自定义 URL 对话框
   void _showCustomUrlDialogCupertino(BuildContext context) {
     final controller = TextEditingController(text: UrlService().customBaseUrl);
-    
+
     showCupertinoDialog<void>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
@@ -627,22 +613,12 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       );
     }
 
-    if (_latencyMs != null) {
-      final latency = _latencyMs!.clamp(0, 9999);
-      Color displayColor;
-      if (latency <= 100) {
-        displayColor = Colors.green;
-      } else if (latency <= 300) {
-        displayColor = Colors.orange;
-      } else {
-        displayColor = colorScheme.error;
-      }
-
+    if (_isConnected == true) {
       return Text(
-        '${latency} ms',
-        style: TextStyle(
+        'OK',
+        style: const TextStyle(
           fontWeight: FontWeight.bold,
-          color: displayColor,
+          color: Colors.green,
         ),
       );
     }
@@ -662,10 +638,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
 
     return Text(
       '--',
-      style: TextStyle(
-        color: colorScheme.outline,
-        fontWeight: FontWeight.bold,
-      ),
+      style: TextStyle(color: colorScheme.outline, fontWeight: FontWeight.bold),
     );
   }
 
@@ -676,7 +649,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     if (baseUrl.isEmpty) {
       if (!mounted) return;
       setState(() {
-        _latencyMs = null;
+        _isConnected = null;
         _errorMessage = '未设置后端地址';
       });
       return;
@@ -688,32 +661,67 @@ class _NetworkSettingsState extends State<NetworkSettings> {
       _errorMessage = null;
     });
 
-    final stopwatch = Stopwatch()..start();
     try {
-      final uri = Uri.parse('$baseUrl/info');
-      await http
-          .get(uri)
-          .timeout(const Duration(seconds: 10));
-
-      stopwatch.stop();
+      await _checkConnection(baseUrl);
       if (!mounted) return;
 
       setState(() {
-        _latencyMs = stopwatch.elapsedMilliseconds == 0
-            ? 1
-            : stopwatch.elapsedMilliseconds;
+        _isConnected = true;
         _isTesting = false;
         _errorMessage = null;
       });
     } catch (e) {
-      stopwatch.stop();
       if (!mounted) return;
       setState(() {
         _isTesting = false;
-        _latencyMs = null;
+        _isConnected = false;
         _errorMessage = e.toString();
       });
     }
   }
-}
 
+  Future<void> _checkConnection(String baseUrl) async {
+    final candidates = <Uri>[
+      Uri.parse(UrlService().healthCheckUrl),
+      Uri.parse('$baseUrl/info'),
+    ];
+    final attempted = <String>{};
+    Object? lastError;
+
+    for (final uri in candidates) {
+      final key = uri.toString();
+      if (!attempted.add(key)) continue;
+
+      try {
+        await _sendProbe(uri, method: 'HEAD');
+        return;
+      } catch (_) {
+        try {
+          await _sendProbe(uri, method: 'GET');
+          return;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+    }
+
+    throw lastError ?? Exception('无法连接后端服务器');
+  }
+
+  Future<void> _sendProbe(Uri uri, {required String method}) async {
+    final client = http.Client();
+
+    try {
+      final request = http.Request(method, uri)
+        ..headers['Cache-Control'] = 'no-cache'
+        ..headers['Pragma'] = 'no-cache';
+      final response = await client
+          .send(request)
+          .timeout(const Duration(seconds: 10));
+
+      await response.stream.drain<void>();
+    } finally {
+      client.close();
+    }
+  }
+}

@@ -53,7 +53,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _rebuildScheduled = false;
-  
+
   // 当前显示的子页面
   SettingsSubPage _currentSubPage = SettingsSubPage.none;
 
@@ -66,11 +66,12 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() {});
     });
   }
+
   @override
   void initState() {
     super.initState();
     print('⚙️ [SettingsPage] 初始化设置页面...');
-    
+
     // 监听主题变化
     ThemeManager().addListener(_onThemeChanged);
     // 监听 URL 服务变化
@@ -89,11 +90,11 @@ class _SettingsPageState extends State<SettingsPage> {
     AudioQualityService().addListener(_onAudioQualityChanged);
     // 监听播放器背景服务变化
     PlayerBackgroundService().addListener(_onPlayerBackgroundChanged);
-    
+
     // 如果已登录，获取 IP 归属地
     final isLoggedIn = AuthService().isLoggedIn;
     print('⚙️ [SettingsPage] 当前登录状态: $isLoggedIn');
-    
+
     if (isLoggedIn) {
       print('⚙️ [SettingsPage] 用户已登录，开始获取IP归属地...');
       LocationService().fetchLocation();
@@ -163,11 +164,12 @@ class _SettingsPageState extends State<SettingsPage> {
     _scheduleRebuild();
   }
 
-
   /// 打开子页面
   void openSubPage(SettingsSubPage subPage) {
-    final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
-    
+    final isCupertinoUI =
+        (Platform.isIOS || Platform.isAndroid) &&
+        ThemeManager().isCupertinoFramework;
+
     if (isCupertinoUI) {
       // iOS 使用原生 Navigator 动画
       _openCupertinoSubPage(context, subPage);
@@ -199,34 +201,54 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 构建 Cupertino 子页面 Widget（带完整导航栏）
   Widget _buildCupertinoSubPageWidget(SettingsSubPage subPage) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDark ? CupertinoColors.black : CupertinoColors.systemGroupedBackground;
-    
+    final backgroundColor = isDark
+        ? CupertinoColors.black
+        : CupertinoColors.systemGroupedBackground;
+
     Widget content;
     String title;
-    
+
     switch (subPage) {
       case SettingsSubPage.appearance:
-        content = AppearanceSettingsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = AppearanceSettingsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '外观';
       case SettingsSubPage.thirdPartyAccounts:
-        content = ThirdPartyAccountsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = ThirdPartyAccountsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '第三方账号';
       case SettingsSubPage.lyric:
-        content = LyricSettingsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = LyricSettingsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '歌词';
       case SettingsSubPage.audioSource:
-        content = AudioSourceSettingsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = AudioSourceSettingsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '音源设置';
       case SettingsSubPage.about:
-        content = AboutSettingsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = AboutSettingsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '关于';
       case SettingsSubPage.labFunctions:
-        content = LabFunctionsContent(onBack: () => Navigator.pop(context), embed: true);
+        content = LabFunctionsContent(
+          onBack: () => Navigator.pop(context),
+          embed: true,
+        );
         title = '实验室功能';
       case SettingsSubPage.none:
         return const SizedBox.shrink();
     }
-    
+
     return CupertinoPageScaffold(
       backgroundColor: backgroundColor,
       navigationBar: CupertinoNavigationBar(
@@ -251,7 +273,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
-  
+
   /// 关闭子页面，返回主设置页面
   void closeSubPage() {
     setState(() {
@@ -265,23 +287,25 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     // 检查是否使用 Fluent UI
     final isFluentUI = ThemeManager().isDesktopFluentUI;
-    final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
-    
+    final isCupertinoUI =
+        (Platform.isIOS || Platform.isAndroid) &&
+        ThemeManager().isCupertinoFramework;
+
     if (isFluentUI) {
       return _buildFluentUI(context);
     }
-    
+
     if (isCupertinoUI) {
       return _buildCupertinoUI(context);
     }
-    
+
     return _buildMaterialUI(context);
   }
 
   /// 构建 Material UI 版本
   Widget _buildMaterialUI(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
@@ -308,15 +332,11 @@ class _SettingsPageState extends State<SettingsPage> {
           final offset = child.key == const ValueKey('main_settings')
               ? const Offset(-1.0, 0.0)
               : const Offset(1.0, 0.0);
-              
+
           return SlideTransition(
-            position: Tween<Offset>(
-              begin: offset,
-              end: Offset.zero,
-            ).animate(CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeInOutCubic,
-            )),
+            position: Tween<Offset>(begin: offset, end: Offset.zero).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeInOutCubic),
+            ),
             child: child,
           );
         },
@@ -333,45 +353,59 @@ class _SettingsPageState extends State<SettingsPage> {
                     // 用户卡片（需随登录状态刷新，不能使用 const）
                     UserCard(),
                     const SizedBox(height: 12),
-                    
-                    // 赞助与支持
-                    _buildSupportTile(context),
-                    const SizedBox(height: 12),
-                    
-                    // 实验室功能
-                    LabFunctions(onTap: () => openSubPage(SettingsSubPage.labFunctions)),
-                    const SizedBox(height: 12),
-                    
+
                     // 第三方账号管理（需随登录状态刷新，不能使用 const）
-                    ThirdPartyAccounts(onTap: () => openSubPage(SettingsSubPage.thirdPartyAccounts)),
+                    ThirdPartyAccounts(
+                      onTap: () =>
+                          openSubPage(SettingsSubPage.thirdPartyAccounts),
+                    ),
                     const SizedBox(height: 12),
-                    
+
                     // 外观设置
-                    AppearanceSettings(onTap: () => openSubPage(SettingsSubPage.appearance)),
+                    AppearanceSettings(
+                      onTap: () => openSubPage(SettingsSubPage.appearance),
+                    ),
                     const SizedBox(height: 12),
-                    
+
                     // 歌词设置（仅 Windows 和 Android 平台显示）
-                    LyricSettings(onTap: () => openSubPage(SettingsSubPage.lyric)),
+                    LyricSettings(
+                      onTap: () => openSubPage(SettingsSubPage.lyric),
+                    ),
                     const SizedBox(height: 12),
-                    
+
                     // 播放设置
                     const PlaybackSettings(),
                     const SizedBox(height: 12),
-                    
+
                     // 搜索设置
                     const SearchSettings(),
                     const SizedBox(height: 12),
-                    
+
                     // 网络设置
-                    NetworkSettings(onAudioSourceTap: () => openSubPage(SettingsSubPage.audioSource)),
+                    NetworkSettings(
+                      onAudioSourceTap: () =>
+                          openSubPage(SettingsSubPage.audioSource),
+                    ),
                     const SizedBox(height: 12),
-                    
+
                     // 存储设置
                     const StorageSettings(),
                     const SizedBox(height: 12),
-                    
+
+                    // 实验室功能
+                    LabFunctions(
+                      onTap: () => openSubPage(SettingsSubPage.labFunctions),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // 赞助与支持
+                    _buildSupportTile(context),
+                    const SizedBox(height: 12),
+
                     // 关于
-                    AboutSettings(onTap: () => openSubPage(SettingsSubPage.about)),
+                    AboutSettings(
+                      onTap: () => openSubPage(SettingsSubPage.about),
+                    ),
                     const SizedBox(height: 12),
                     const SizedBox(height: 40),
                   ],
@@ -380,7 +414,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
-  
+
   /// 构建赞助与支持卡片 (Material Design)
   Widget _buildSupportTile(BuildContext context) {
     return MD3SettingsSection(
@@ -395,7 +429,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     );
   }
-  
+
   /// 构建赞助与支持卡片 (Fluent UI)
   Widget _buildFluentSupportTile(BuildContext context) {
     return FluentSettingsGroup(
@@ -411,7 +445,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     );
   }
-  
+
   String _getPageTitle() {
     switch (_currentSubPage) {
       case SettingsSubPage.appearance:
@@ -454,8 +488,10 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 注意：子页面现在通过 Navigator.push + CupertinoPageRoute 实现原生动画
   Widget _buildCupertinoUI(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDark ? CupertinoColors.black : CupertinoColors.systemGroupedBackground;
-    
+    final backgroundColor = isDark
+        ? CupertinoColors.black
+        : CupertinoColors.systemGroupedBackground;
+
     // 主设置页面使用大标题导航栏 (iOS 26 风格)
     return CupertinoPageScaffold(
       backgroundColor: backgroundColor,
@@ -464,7 +500,11 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// 构建 Cupertino 主设置页面内容
-  Widget _buildCupertinoMainContent(BuildContext context, bool isDark, Color backgroundColor) {
+  Widget _buildCupertinoMainContent(
+    BuildContext context,
+    bool isDark,
+    Color backgroundColor,
+  ) {
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
@@ -475,136 +515,147 @@ class _SettingsPageState extends State<SettingsPage> {
           border: null,
           stretch: false,
         ),
-        
+
         // 主内容
         SliverToBoxAdapter(
           child: SafeArea(
             top: false,
             child: Column(
               children: [
-              const SizedBox(height: 8),
-              
-              // 用户卡片 - iOS 26 风格
-              _buildCupertinoUserSection(context, isDark),
-              
-              const SizedBox(height: 24),
-              
-              // 赞助与支持
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: null,
-                children: [
-                  _buildCupertinoSettingsItem(
-                    context,
-                    isDark: isDark,
-                    icon: CupertinoIcons.heart_fill,
-                    iconColor: const Color(0xFFFF2D55),
-                    title: '赞助与支持',
-                    subtitle: '您的支持是我们持续改进的动力',
-                    onTap: () => _openSupportPage(context),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // 账号设置分组
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '账号',
-                children: [
-                  _buildCupertinoSettingsItem(
-                    context,
-                    isDark: isDark,
-                    icon: CupertinoIcons.link,
-                    iconColor: const Color(0xFF5856D6),
-                    title: '第三方账号',
-                    subtitle: '网易云音乐等',
-                    onTap: () => openSubPage(SettingsSubPage.thirdPartyAccounts),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // 外观与显示分组
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '外观与显示',
-                children: [
-                  _buildCupertinoSettingsItem(
-                    context,
-                    isDark: isDark,
-                    icon: CupertinoIcons.paintbrush,
-                    iconColor: const Color(0xFFFF9500),
-                    title: '外观',
-                    subtitle: '主题、颜色、界面',
-                    onTap: () => openSubPage(SettingsSubPage.appearance),
-                  ),
-                  _buildCupertinoSettingsItem(
-                    context,
-                    isDark: isDark,
-                    icon: CupertinoIcons.text_quote,
-                    iconColor: const Color(0xFF34C759),
-                    title: '歌词',
-                    subtitle: '歌词显示设置',
-                    onTap: () => openSubPage(SettingsSubPage.lyric),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // 播放设置分组
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '播放',
-                children: const [
-                  PlaybackSettings(),
-                  SearchSettings(),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // 网络设置分组
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '网络',
-                children: [
-                  NetworkSettings(onAudioSourceTap: () => openSubPage(SettingsSubPage.audioSource)),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // 存储设置分组
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '存储',
-                children: const [
-                  StorageSettings(),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              
-              _buildCupertinoSettingsGroup(
-                context,
-                isDark: isDark,
-                header: '关于',
-                children: [
-                  AboutSettings(onTap: () => openSubPage(SettingsSubPage.about)),
-                ],
-              ),
-              
-              const SizedBox(height: 100), // 底部留白
+                const SizedBox(height: 8),
+
+                // 用户卡片 - iOS 26 风格
+                _buildCupertinoUserSection(context, isDark),
+
+                const SizedBox(height: 24),
+
+                // 账号设置分组
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '账号',
+                  children: [
+                    _buildCupertinoSettingsItem(
+                      context,
+                      isDark: isDark,
+                      icon: CupertinoIcons.link,
+                      iconColor: const Color(0xFF5856D6),
+                      title: '第三方账号',
+                      subtitle: '网易云音乐等',
+                      onTap: () =>
+                          openSubPage(SettingsSubPage.thirdPartyAccounts),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                // 外观与显示分组
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '外观与显示',
+                  children: [
+                    _buildCupertinoSettingsItem(
+                      context,
+                      isDark: isDark,
+                      icon: CupertinoIcons.paintbrush,
+                      iconColor: const Color(0xFFFF9500),
+                      title: '外观',
+                      subtitle: '主题、颜色、界面',
+                      onTap: () => openSubPage(SettingsSubPage.appearance),
+                    ),
+                    _buildCupertinoSettingsItem(
+                      context,
+                      isDark: isDark,
+                      icon: CupertinoIcons.text_quote,
+                      iconColor: const Color(0xFF34C759),
+                      title: '歌词',
+                      subtitle: '歌词显示设置',
+                      onTap: () => openSubPage(SettingsSubPage.lyric),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                // 播放设置分组
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '播放',
+                  children: const [PlaybackSettings()],
+                ),
+
+                const SizedBox(height: 24),
+
+                // 搜索设置分组
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '搜索',
+                  children: const [SearchSettings()],
+                ),
+
+                const SizedBox(height: 24),
+
+                // 网络设置分组
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '网络',
+                  children: [
+                    NetworkSettings(
+                      onAudioSourceTap: () =>
+                          openSubPage(SettingsSubPage.audioSource),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                // 存储设置分组
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '存储',
+                  children: const [StorageSettings()],
+                ),
+
+                const SizedBox(height: 24),
+
+                // 赞助与支持
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '支持',
+                  children: [
+                    _buildCupertinoSettingsItem(
+                      context,
+                      isDark: isDark,
+                      icon: CupertinoIcons.heart_fill,
+                      iconColor: const Color(0xFFFF2D55),
+                      title: '赞助与支持',
+                      subtitle: '您的支持是我们持续改进的动力',
+                      onTap: () => _openSupportPage(context),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                _buildCupertinoSettingsGroup(
+                  context,
+                  isDark: isDark,
+                  header: '关于',
+                  children: [
+                    AboutSettings(
+                      onTap: () => openSubPage(SettingsSubPage.about),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 100), // 底部留白
               ],
             ),
           ),
@@ -612,7 +663,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     );
   }
-  
+
   /// 构建 iOS 26 风格的用户卡片区域
   Widget _buildCupertinoUserSection(BuildContext context, bool isDark) {
     return Container(
@@ -634,7 +685,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
-  
+
   /// 构建 iOS 26 风格的设置分组
   Widget _buildCupertinoSettingsGroup(
     BuildContext context, {
@@ -671,11 +722,15 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     );
   }
-  
+
   /// 构建带分隔线的子项列表
-  List<Widget> _buildChildrenWithDividers(BuildContext context, List<Widget> children, bool isDark) {
+  List<Widget> _buildChildrenWithDividers(
+    BuildContext context,
+    List<Widget> children,
+    bool isDark,
+  ) {
     final List<Widget> result = [];
-    
+
     for (int i = 0; i < children.length; i++) {
       result.add(children[i]);
       if (i < children.length - 1) {
@@ -684,18 +739,18 @@ class _SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.only(left: 60),
             child: Container(
               height: 0.5,
-              color: isDark 
-                  ? CupertinoColors.systemGrey.withOpacity(0.3) 
+              color: isDark
+                  ? CupertinoColors.systemGrey.withOpacity(0.3)
                   : CupertinoColors.systemGrey.withOpacity(0.3),
             ),
           ),
         );
       }
     }
-    
+
     return result;
   }
-  
+
   /// 构建 iOS 26 风格的设置项
   Widget _buildCupertinoSettingsItem(
     BuildContext context, {
@@ -721,11 +776,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 color: iconColor,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(
-                icon,
-                color: CupertinoColors.white,
-                size: 18,
-              ),
+              child: Icon(icon, color: CupertinoColors.white, size: 18),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -736,7 +787,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     title,
                     style: TextStyle(
                       fontSize: 17,
-                      color: isDark ? CupertinoColors.white : CupertinoColors.black,
+                      color: isDark
+                          ? CupertinoColors.white
+                          : CupertinoColors.black,
                     ),
                   ),
                   if (subtitle != null) ...[
@@ -762,26 +815,24 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
-  
+
   /// 打开支持页面
   void _openSupportPage(BuildContext context) {
-    final isCupertinoUI = (Platform.isIOS || Platform.isAndroid) && ThemeManager().isCupertinoFramework;
-    
+    final isCupertinoUI =
+        (Platform.isIOS || Platform.isAndroid) &&
+        ThemeManager().isCupertinoFramework;
+
     if (isCupertinoUI) {
-      Navigator.of(context).push(
-        CupertinoPageRoute(
-          builder: (context) => const SupportPage(),
-        ),
-      );
+      Navigator.of(
+        context,
+      ).push(CupertinoPageRoute(builder: (context) => const SupportPage()));
     } else {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => const SupportPage(),
-        ),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (context) => const SupportPage()));
     }
   }
-  
+
   Widget _buildCupertinoSubPage(BuildContext context) {
     switch (_currentSubPage) {
       case SettingsSubPage.appearance:
@@ -814,22 +865,25 @@ class _SettingsPageState extends State<SettingsPage> {
         transitionBuilder: (Widget child, Animation<double> animation) {
           // 简单的左右滑动效果
           final isMain = child.key == const ValueKey('main_settings');
-          final isSub = child.key is ValueKey<String> && (child.key as ValueKey<String>).value.startsWith('sub_settings_');
-          
+          final isSub =
+              child.key is ValueKey<String> &&
+              (child.key as ValueKey<String>).value.startsWith('sub_settings_');
+
           final offset = isMain
               ? const Offset(-0.2, 0.0) // 主页面移出时略微向左
-              : (isSub ? const Offset(0.2, 0.0) : const Offset(1.0, 0.0)); // 子页面进入时从右侧拉入
-              
+              : (isSub
+                    ? const Offset(0.2, 0.0)
+                    : const Offset(1.0, 0.0)); // 子页面进入时从右侧拉入
+
           return FadeTransition(
             opacity: animation,
             child: SlideTransition(
-              position: Tween<Offset>(
-                begin: offset,
-                end: Offset.zero,
-              ).animate(CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeInOutCubic,
-              )),
+              position: Tween<Offset>(begin: offset, end: Offset.zero).animate(
+                CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeInOutCubic,
+                ),
+              ),
               child: child,
             ),
           );
@@ -855,7 +909,7 @@ class _SettingsPageState extends State<SettingsPage> {
         // 用户卡片
         UserCard(),
         const SizedBox(height: 16),
-        
+
         // 赞助与支持
         _buildFluentSupportTile(context),
         const SizedBox(height: 16),
@@ -863,29 +917,35 @@ class _SettingsPageState extends State<SettingsPage> {
         // 实验室功能
         LabFunctions(onTap: () => openSubPage(SettingsSubPage.labFunctions)),
         const SizedBox(height: 16),
-        
+
         // 分组设置
-        ThirdPartyAccounts(onTap: () => openSubPage(SettingsSubPage.thirdPartyAccounts)),
+        ThirdPartyAccounts(
+          onTap: () => openSubPage(SettingsSubPage.thirdPartyAccounts),
+        ),
         const SizedBox(height: 16),
-        
-        AppearanceSettings(onTap: () => openSubPage(SettingsSubPage.appearance)),
+
+        AppearanceSettings(
+          onTap: () => openSubPage(SettingsSubPage.appearance),
+        ),
         const SizedBox(height: 16),
-        
+
         LyricSettings(onTap: () => openSubPage(SettingsSubPage.lyric)),
         const SizedBox(height: 16),
-        
+
         const PlaybackSettings(),
         const SizedBox(height: 16),
-        
+
         const SearchSettings(),
         const SizedBox(height: 16),
-        
-        NetworkSettings(onAudioSourceTap: () => openSubPage(SettingsSubPage.audioSource)),
+
+        NetworkSettings(
+          onAudioSourceTap: () => openSubPage(SettingsSubPage.audioSource),
+        ),
         const SizedBox(height: 16),
-        
+
         const StorageSettings(),
         const SizedBox(height: 16),
-        
+
         AboutSettings(onTap: () => openSubPage(SettingsSubPage.about)),
         const SizedBox(height: 40),
       ],
@@ -915,16 +975,29 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildFluentHeader(BuildContext context) {
     final theme = fluent_ui.FluentTheme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+
     String pageName = '';
     switch (_currentSubPage) {
-      case SettingsSubPage.appearance: pageName = '外观'; break;
-      case SettingsSubPage.thirdPartyAccounts: pageName = '第三方账号'; break;
-      case SettingsSubPage.lyric: pageName = '歌词'; break;
-      case SettingsSubPage.audioSource: pageName = '音源设置'; break;
-      case SettingsSubPage.about: pageName = '关于'; break;
-      case SettingsSubPage.labFunctions: pageName = '实验室功能'; break;
-      case SettingsSubPage.none: return const Text('设置');
+      case SettingsSubPage.appearance:
+        pageName = '外观';
+        break;
+      case SettingsSubPage.thirdPartyAccounts:
+        pageName = '第三方账号';
+        break;
+      case SettingsSubPage.lyric:
+        pageName = '歌词';
+        break;
+      case SettingsSubPage.audioSource:
+        pageName = '音源设置';
+        break;
+      case SettingsSubPage.about:
+        pageName = '关于';
+        break;
+      case SettingsSubPage.labFunctions:
+        pageName = '实验室功能';
+        break;
+      case SettingsSubPage.none:
+        return const Text('设置');
     }
 
     return Row(
@@ -958,10 +1031,7 @@ class _SettingsPageState extends State<SettingsPage> {
             color: theme.resources.textFillColorSecondary,
           ),
         ),
-        Text(
-          pageName,
-          style: theme.typography.title?.copyWith(fontSize: 20),
-        ),
+        Text(pageName, style: theme.typography.title?.copyWith(fontSize: 20)),
       ],
     );
   }
